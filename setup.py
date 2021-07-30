@@ -16,5 +16,10 @@ setup(
     #classifiers=CLASSIFIERS,
     packages=find_packages(exclude=["doc","test"]),
     #include_package_data=True,
-    install_requires=["numpy", "pandas", "sib", "covasim"],
+    install_requires=[
+        "numpy",
+        "scipy",
+        "pandas",
+        #"sib",
+        "covasim"],
 )
