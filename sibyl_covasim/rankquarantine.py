@@ -19,7 +19,8 @@ class Mitigation(cvi.Intervention):
                 sensitivity=1.0, specificity:float=1.0, 
                 loss_prob=0, test_delay=0,
                 quar_period=None,
-                notif_delay=0):
+                notif_delay=0,
+                debug=False):
 
         super().__init__(label="Mitigation: "+label)
 
@@ -33,6 +34,7 @@ class Mitigation(cvi.Intervention):
         self.end_day     = end_day
         self.quar_period = quar_period
         self.notif_delay = notif_delay
+        self.debug = debug
 
         self.contacts_day = None
         self.delayed_init = False
@@ -71,10 +73,15 @@ class Mitigation(cvi.Intervention):
     def apply(self, sim):
         
         day = sim.t
+        
         if self.delayed_init:
             self._init_for_sim(sim)
             self.delayed_init = False
-
+        if(day < self.start_day):
+            ## do nothing
+            self.daily_obs = []
+        if self.debug:
+            print(f"Day {day} observations: ", len(self.daily_obs))
         # get contacts of the day
         conts_m = sum(
             sp.csr_matrix(
@@ -97,7 +104,7 @@ class Mitigation(cvi.Intervention):
         ## test people
         ## not using sim.people.test because doesn't record the susceptible tests
         #sim.people.test(test_inds, test_sensitivity=self.sensitivity, loss_prob=self.loss_prob, test_delay=self.test_delay)
-
+        
         self.tester.test(sim, test_inds,
                     test_sensitivity=self.sensitivity,
                     test_specificity=self.specificity,
@@ -106,6 +113,8 @@ class Mitigation(cvi.Intervention):
         ## find people who are tested today
         ## date_tested is the date in which the test has been required
         results_day = self.tester.get_results(day)
+        
+            #print("test results ",results_day)
         ## change obs
         self.daily_obs = [(idx, st, day) for idx, st in results_day]
 
