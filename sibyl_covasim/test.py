@@ -6,13 +6,13 @@ import covasim.utils as cvu
 
 class CovasimTester:
 
-    def __init__(self, sim):
+    def __init__(self, sim, maxtest=None):
         
         pars = sim.pars
         self.N = pars["pop_size"]
         self.date_diagn_state = np.full((3,self.N), np.nan)
 
-    def test(self, sim, inds, test_sensitivity=1.0, test_specificity=1.0, loss_prob=0.0, test_delay=0):
+    def apply_tests(self, sim, inds, test_sensitivity=1.0, test_specificity=1.0, loss_prob=0.0, test_delay=0):
         '''
         Method to test people, accounting for recovered 
         and susceptible individuals (SIR model)

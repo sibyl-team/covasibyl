@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 version = 0.1
 
 setup(
-    name="SibylCovasimInterv",
+    name="SibylCovasim",
     version=version,
     author="Fabio Mazza and the Sibyl Team",
     description="Interventions for the Covasim model",
