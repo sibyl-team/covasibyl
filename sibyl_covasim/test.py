@@ -57,7 +57,7 @@ class CovasimTester:
 
         # check for recovered
         rec_inds = cvu.itruei(people.recovered, inds_test)
-        # TODO: use specifity here?
+        # TODO: use specificity here?
         ## check they haven't been diagnosed before?
         test_rec = rec_inds#rec_inds[np.isnan(people.date_diagnosed[rec_inds])]
         

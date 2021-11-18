@@ -8,6 +8,7 @@ import covasim.utils as cvu
 import covasim.defaults as cvd
 from .test import CovasimTester
 
+import pandas as pd
 
 class Tester:
     pass
@@ -75,6 +76,7 @@ class Mitigation(cvi.Intervention):
         self.daily_obs = None
         self.ranker_data = None
         self.tester = None
+        self._tested_idx = None
 
     def _init_for_sim(self, sim):
         """
@@ -82,6 +84,7 @@ class Mitigation(cvi.Intervention):
         """
         if self.quar_period is None:
             self.quar_period = sim['quar_period']
+            print("Quarantine period: ", self.quar_period)
         
         pars = sim.pars
         self.N = pars["pop_size"]
@@ -99,7 +102,9 @@ class Mitigation(cvi.Intervention):
         
         self.all_observ =[]
         self.daily_obs = []
-        self.ranker_data = {}
+        self.ranker_data = {"num_diagnosed":{},
+        "num_diagnosed_day":{}}
+        self._tested_idx = []
 
     def _prob_test_sympt(self, sim, t, test_probs=None):
         """
@@ -150,48 +155,65 @@ class Mitigation(cvi.Intervention):
         
         ### get rank from the algorithm
         rank_algo = self.ranker.rank(day, contacts_day, self.daily_obs, self.ranker_data)
-        rank = np.array(sorted(rank_algo, key= lambda tup: tup[1], reverse=True))
-        rank_idx = rank[:,0].astype(int)
-        
-        true_inf = sim.people.infectious
-        
-        #p_inf = np.zeros(self.N)
-        #p_inf[rank_idx] = rank[:,1]
-        
-        
-        
-        ## decide which people to test
-        #
-        test_inds = rank_idx[:self.n_tests_algo_day]
-        ## accuracy
+        #rank = np.array(sorted(rank_algo, key= lambda tup: tup[1], reverse=True))
+        #rank_idx = rank[:,0].astype(int)
         if day >= self.start_day:
-            real_inf = true_inf[test_inds].sum()
-            fpr, tpr, _ = roc_curve(true_inf[test_inds], rank[:self.n_tests_algo_day,1])
-            print("day {}: AUC in infected: {:4.3f}, accu {:.2%}".format(
-                day,auc(fpr,tpr), real_inf/self.n_tests_algo_day))
-
-        test_symp_probs = self._prob_test_sympt(sim=sim, t=day,)
-        test_symp_probs[test_inds] = 0.
-        inds_symps = cvu.choose_w(probs=test_symp_probs, n=self.n_tests_symp, unique=True)
-        ## test people
-        ## not using sim.people.test because doesn't record the susceptible tests
-
-        test_inds = np.concatenate((test_inds,inds_symps))        
-        self.tester.apply_tests(sim, test_inds,
-                    test_sensitivity=self.sensitivity,
-                    test_specificity=self.specificity,
-                    loss_prob=self.loss_prob, test_delay=self.test_delay)
-
-        ## find people who are tested today
-        ## date_tested is the date in which the test has been required
-        results_day = self.tester.get_results(day)
+            rank_df = pd.DataFrame(rank_algo, columns=["idx","rank"]).set_index("idx")
+            rank = rank_df["rank"].sort_index()
+            ## remove already diagnosed
+            is_diagnosed = sim.people.date_diagnosed < day
+            rank_good = rank[np.logical_not(is_diagnosed)].sort_values(ascending=False)
+            true_inf = sim.people.infectious
         
-            #print("test results ",results_day)
-        ## change obs
-        self.daily_obs = [(idx, st, day) for idx, st in results_day]
 
-        ## quarantine individuals
-        inds_quar = cvu.true(sim.people.date_diagnosed == sim.t)
-        sim.people.schedule_quarantine(inds_quar,
-                    start_date=sim.t + self.notif_delay,
-                    period=self.quar_period - self.notif_delay)
+            idx_diagnosed = cvu.true(is_diagnosed)
+            
+            ## decide which people to test
+            #
+            test_inds = rank_good[:self.n_tests_algo_day].index.to_numpy()
+
+            num_already_t = len(set(idx_diagnosed).intersection(test_inds))
+
+            ## accuracy
+        
+            real_inf = true_inf[test_inds].sum()
+            fpr, tpr, _ = roc_curve(true_inf[test_inds], rank[test_inds].to_numpy())
+            print("day {}: AUC_I: {:4.3f}, accu {:.2%}, n_retest {}".format(
+                day,auc(fpr,tpr), real_inf/self.n_tests_algo_day, num_already_t),
+                end=" ")
+
+            test_symp_probs = self._prob_test_sympt(sim=sim, t=day,)
+            test_symp_probs[test_inds] = 0.
+            test_symp_probs[idx_diagnosed] = 0.
+            inds_symps = cvu.choose_w(probs=test_symp_probs, n=self.n_tests_symp, unique=True)
+            ## test people
+            ## not using sim.people.test because doesn't record the susceptible tests
+
+            test_inds = np.concatenate((test_inds,inds_symps))        
+            self.tester.apply_tests(sim, test_inds,
+                        test_sensitivity=self.sensitivity,
+                        test_specificity=self.specificity,
+                        loss_prob=self.loss_prob, test_delay=self.test_delay)
+
+            ## find people who are tested today
+            ## date_tested is the date in which the test has been required
+            results_day = self.tester.get_results(day)
+            
+                #print("test results ",results_day)
+            ## change obs
+            self.daily_obs = [(idx, st, day) for idx, st in results_day]
+            
+            stats_tests = np.unique(results_day[:,1], return_counts=True)
+            stats = np.zeros(3,dtype=int)
+            stats[stats_tests[0]] = stats_tests[1]
+            print("tests results: ", stats)
+            #print(self.daily_obs)
+
+            ## quarantine individuals
+            inds_quar = cvu.true(sim.people.date_diagnosed == sim.t)
+            sim.people.schedule_quarantine(inds_quar,
+                        start_date=sim.t + self.notif_delay,
+                        period=self.quar_period - self.notif_delay)
+
+        self.ranker_data["num_diagnosed"][day] = (sim.people.diagnosed.sum())
+        self.ranker_data["num_diagnosed_day"][day] = (sim.people.date_diagnosed == sim.t).sum()
