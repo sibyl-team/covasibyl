@@ -157,19 +157,24 @@ class Mitigation(cvi.Intervention):
         rank_algo = self.ranker.rank(day, contacts_day, self.daily_obs, self.ranker_data)
         #rank = np.array(sorted(rank_algo, key= lambda tup: tup[1], reverse=True))
         #rank_idx = rank[:,0].astype(int)
+        
         if day >= self.start_day:
             rank_df = pd.DataFrame(rank_algo, columns=["idx","rank"]).set_index("idx")
             rank = rank_df["rank"].sort_index()
             ## remove already diagnosed
             is_diagnosed = sim.people.date_diagnosed < day
-            rank_good = rank[np.logical_not(is_diagnosed)].sort_values(ascending=False)
-            true_inf = sim.people.infectious
-        
-
-            idx_diagnosed = cvu.true(is_diagnosed)
             
-            ## decide which people to test
+            true_inf = sim.people.infectious
+            idx_diagnosed = cvu.true(is_diagnosed)
+            ### test first for symptomatics
+            test_symp_probs = self._prob_test_sympt(sim=sim, t=day,)
+            test_symp_probs[idx_diagnosed] = 0.
+            inds_symps = cvu.choose_w(probs=test_symp_probs, n=self.n_tests_symp, unique=True) 
+
+            is_diagnosed[inds_symps] =  True
+            ## test people with rankers
             #
+            rank_good = rank[np.logical_not(is_diagnosed)].sort_values(ascending=False)
             test_inds = rank_good[:self.n_tests_algo_day].index.to_numpy()
 
             num_already_t = len(set(idx_diagnosed).intersection(test_inds))
@@ -179,13 +184,10 @@ class Mitigation(cvi.Intervention):
             real_inf = true_inf[test_inds].sum()
             fpr, tpr, _ = roc_curve(true_inf[test_inds], rank[test_inds].to_numpy())
             print("day {}: AUC_I: {:4.3f}, accu {:.2%}, n_retest {}".format(
-                day,auc(fpr,tpr), real_inf/self.n_tests_algo_day, num_already_t),
+                day,auc(fpr,tpr), real_inf/self.n_tests_algo_day, num_already_t) ,
                 end=" ")
 
-            test_symp_probs = self._prob_test_sympt(sim=sim, t=day,)
-            test_symp_probs[test_inds] = 0.
-            test_symp_probs[idx_diagnosed] = 0.
-            inds_symps = cvu.choose_w(probs=test_symp_probs, n=self.n_tests_symp, unique=True)
+            
             ## test people
             ## not using sim.people.test because doesn't record the susceptible tests
 
@@ -206,14 +208,17 @@ class Mitigation(cvi.Intervention):
             stats_tests = np.unique(results_day[:,1], return_counts=True)
             stats = np.zeros(3,dtype=int)
             stats[stats_tests[0]] = stats_tests[1]
-            print("tests results: ", stats)
+            print("tests results: ", stats, f" n_infect: {sim.people.infectious.sum()}", )
             #print(self.daily_obs)
 
             ## quarantine individuals
             inds_quar = cvu.true(sim.people.date_diagnosed == sim.t)
+            #print("Quarantine for ",(inds_quar))
             sim.people.schedule_quarantine(inds_quar,
                         start_date=sim.t + self.notif_delay,
                         period=self.quar_period - self.notif_delay)
+
+            print("Quarantined: ",sum(sim.people.quarantined), "Asked for: ", len(inds_quar))
 
         self.ranker_data["num_diagnosed"][day] = (sim.people.diagnosed.sum())
         self.ranker_data["num_diagnosed_day"][day] = (sim.people.date_diagnosed == sim.t).sum()
