@@ -13,6 +13,28 @@ import pandas as pd
 class Tester:
     pass
 
+def filter_contacts(p1, p2, beta):
+    """
+    Remove invalid contacts, then duplicate them
+    """
+    valid = (p1!=p2)
+    i = p1[valid]
+    j = p2[valid]
+    m = beta[valid]
+    return np.concatenate((i,j)), np.concatenate((j,i)), np.concatenate((m,m))
+
+def get_contacts_day(people):
+    N = len(people.sex)
+    c = 0
+    for n,lay in people.contacts.items():
+        #print(n,lay)
+        w = people.pars["beta_layer"][n]
+        u = filter_contacts(**lay)
+        mat = sp.csr_matrix((u[2]*w,(u[0],u[1])), shape=(N,N))
+        c += mat
+    cend = c.tocoo()
+    return pd.DataFrame(dict(zip(["i","j","m"],(cend.row, cend.col, cend.data))) )
+
 
 class Mitigation(cvi.Intervention):
     """
@@ -77,6 +99,7 @@ class Mitigation(cvi.Intervention):
         self.ranker_data = None
         self.tester = None
         self._tested_idx = None
+        self.hist = []
 
     def _init_for_sim(self, sim):
         """
@@ -92,6 +115,8 @@ class Mitigation(cvi.Intervention):
         self.ranker.init(self.N, T)
 
         self.tester = CovasimTester(sim)
+
+        
     
     def initialize(self, sim=None):
         super().initialize(sim)
@@ -105,6 +130,8 @@ class Mitigation(cvi.Intervention):
         self.ranker_data = {"num_diagnosed":{},
         "num_diagnosed_day":{}}
         self._tested_idx = []
+
+        self.hist = []
 
     def _prob_test_sympt(self, sim, t, test_probs=None):
         """
@@ -141,23 +168,17 @@ class Mitigation(cvi.Intervention):
         if self.debug:
             print(f"Day {day} observations: ", len(self.daily_obs))
         # get contacts of the day
-        conts_m = sum(
-            sp.csr_matrix(
-            (layer["beta"],(layer["p1"],layer["p2"])), shape=(self.N, self.N))
-            for k,layer in sim.people.contacts.items()
-            )
-        
-        conts_m = conts_m.tolil()
-        conts_m.setdiag(0.)
-        conts_m = conts_m.tocoo()
-
-        contacts_day = [(i,j,day, val) for i,j,val in zip(conts_m.row, conts_m.col, conts_m.data)]
+        conts_m = get_contacts_day(sim.people)
+        conts_m["day"] = day
+        #contacts_day = [(i,j,day, val) for i,j,val in zip(conts_m.row, conts_m.col, conts_m.data)]
+        contacts_day = conts_m[["i","j","day","m"]].to_records(index=False)
         
         ### get rank from the algorithm
         rank_algo = self.ranker.rank(day, contacts_day, self.daily_obs, self.ranker_data)
         #rank = np.array(sorted(rank_algo, key= lambda tup: tup[1], reverse=True))
         #rank_idx = rank[:,0].astype(int)
         
+        day_stats = dict(day=day)
         if day >= self.start_day:
             rank_df = pd.DataFrame(rank_algo, columns=["idx","rank"]).set_index("idx")
             rank = rank_df["rank"].sort_index()
@@ -211,6 +232,8 @@ class Mitigation(cvi.Intervention):
             stats[stats_tests[0]] = stats_tests[1]
             assert stats_tests[1].sum() == self.n_tests_algo_day + self.n_tests_symp
             print("tests results: ", stats, f" n_infect: {sim.people.infectious.sum()}", )
+            for s,k in enumerate(["S","I","R"]):
+                day_stats["test_"+k] = stats[s]
             #print(self.daily_obs)
 
             ## quarantine individuals
@@ -222,5 +245,12 @@ class Mitigation(cvi.Intervention):
 
             print("Quarantined: ",sum(sim.people.quarantined), "Asked for: ", len(inds_quar))
         diagnosed_today = (sim.people.date_diagnosed == sim.t) | (self.tester.date_diagnosed == sim.t)
-        self.ranker_data["num_diagnosed"][day] = (sim.people.diagnosed.sum())
-        self.ranker_data["num_diagnosed_day"][day] = (diagnosed_today).sum()
+
+        day_stats["num_diagnosed"] = (sim.people.diagnosed.sum())
+        #self.ranker_data["num_diagnosed"][day] = (sim.people.diagnosed.sum())
+       
+        day_stats["num_diagnosed_day"] = (diagnosed_today).sum()
+        day_stats["n_infectious"] = sim.people.infectious.sum()
+
+
+        self.hist.append(day_stats)
