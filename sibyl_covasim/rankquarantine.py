@@ -35,6 +35,9 @@ def get_contacts_day(people):
     cend = c.tocoo()
     return pd.DataFrame(dict(zip(["i","j","m"],(cend.row, cend.col, cend.data))) )
 
+def check_free_birds(people):
+    free_idx = (people.infectious & np.logical_not(people.quarantined)).nonzero()[0]
+    return free_idx
 
 class Mitigation(cvi.Intervention):
     """
@@ -155,6 +158,17 @@ class Mitigation(cvi.Intervention):
         test_probs[symp_inds] *= symp_test # Update the test probabilities
         return test_probs
 
+    def _apply_quarantine(self, sim):
+        """
+        Put the people tested positive on this day in quarantine
+        """
+        diagnosed_today = (sim.people.date_diagnosed == sim.t) | (self.tester.date_diagnosed == sim.t)
+        inds_quar = cvu.true(diagnosed_today)
+        sim.people.schedule_quarantine(inds_quar,
+                        start_date=sim.t + self.notif_delay,
+                        period=self.quar_period - self.notif_delay)
+        return inds_quar
+
     def apply(self, sim):
         
         day = sim.t
@@ -183,29 +197,35 @@ class Mitigation(cvi.Intervention):
             rank_df = pd.DataFrame(rank_algo, columns=["idx","rank"]).set_index("idx")
             rank = rank_df["rank"].sort_index()
             ## remove already diagnosed
-            is_diagnosed = (sim.people.date_diagnosed < day) | (self.tester.date_diagnosed < day)
+            already_diagnosed = (sim.people.date_diagnosed < day) | (self.tester.date_diagnosed < day)
             
             true_inf = sim.people.infectious
-            idx_diagnosed = cvu.true(is_diagnosed)
+            idx_diagnosed = cvu.true(already_diagnosed)
             ### test first for symptomatics
             test_symp_probs = self._prob_test_sympt(sim=sim, t=day,)
             test_symp_probs[idx_diagnosed] = 0.
             inds_symps = cvu.choose_w(probs=test_symp_probs, n=self.n_tests_symp, unique=True) 
 
-            is_diagnosed[inds_symps] =  True
+            already_diagnosed[inds_symps] =  True
             ## test people with rankers
-            #
-            rank_good = rank[np.logical_not(is_diagnosed)].sort_values(ascending=False)
-            test_inds = rank_good[:self.n_tests_algo_day].index.to_numpy()
+            n_test_algo = self.n_tests_algo_day
+            rank_good = rank[np.logical_not(already_diagnosed)].sort_values(ascending=False)
+            test_inds = rank_good[:n_test_algo].index.to_numpy()
 
             num_already_t = len(set(idx_diagnosed).intersection(test_inds))
+            num_chosen_both = len(set(inds_symps).intersection(
+                rank.sort_values(ascending=False)[:n_test_algo].index.to_numpy() ) )
 
             ## accuracy
         
             real_inf = true_inf[test_inds].sum()
-            fpr, tpr, _ = roc_curve(true_inf[test_inds], rank[test_inds].to_numpy())
+            if real_inf > 0:
+                fpr, tpr, _ = roc_curve(true_inf[test_inds], rank[test_inds].to_numpy())
+                auc_inf = auc(fpr,tpr)  #if real_inf > 0 else np.nan
+            else:
+                auc_inf = np.nan
             print("day {}: AUC_I: {:4.3f}, accu {:.2%}, n_retest {}".format(
-                day,auc(fpr,tpr), real_inf/self.n_tests_algo_day, num_already_t) ,
+                day,auc_inf, real_inf/self.n_tests_algo_day, num_already_t) ,
                 end=" ")
 
             
@@ -231,24 +251,22 @@ class Mitigation(cvi.Intervention):
             stats = np.zeros(3,dtype=int)
             stats[stats_tests[0]] = stats_tests[1]
             assert stats_tests[1].sum() == self.n_tests_algo_day + self.n_tests_symp
-            print("tests results: ", stats, f" n_infect: {sim.people.infectious.sum()}", )
+            print("res: ", stats, f" I: {sim.people.infectious.sum()}", end=" " )
             for s,k in enumerate(["S","I","R"]):
                 day_stats["test_"+k] = stats[s]
             #print(self.daily_obs)
 
             ## quarantine individuals
-            diagnosed_today = (sim.people.date_diagnosed == sim.t) | (self.tester.date_diagnosed == sim.t)
-            inds_quar = cvu.true(diagnosed_today)
-            sim.people.schedule_quarantine(inds_quar,
-                        start_date=sim.t + self.notif_delay,
-                        period=self.quar_period - self.notif_delay)
-
-            print("Quarantined: ",sum(sim.people.quarantined), "Asked for: ", len(inds_quar))
+            inds_quar = self._apply_quarantine(sim)
+            print("Q TOT: {:d}, today: {:d}".format(sum(sim.people.quarantined), len(inds_quar)),end=" ")
+        free_birds = len(check_free_birds(sim.people))
+        if day >= self.start_day:
+            print("free {:d}".format(free_birds))
         diagnosed_today = (sim.people.date_diagnosed == sim.t) | (self.tester.date_diagnosed == sim.t)
 
         day_stats["num_diagnosed"] = (sim.people.diagnosed.sum())
         #self.ranker_data["num_diagnosed"][day] = (sim.people.diagnosed.sum())
-       
+        day_stats["free_birds"] = free_birds
         day_stats["num_diagnosed_day"] = (diagnosed_today).sum()
         day_stats["n_infectious"] = sim.people.infectious.sum()
 
