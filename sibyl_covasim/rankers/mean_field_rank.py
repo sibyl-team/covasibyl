@@ -9,6 +9,25 @@ def records_to_csr(N, records, lamb):
     data = lamb*np.array(value)*np.ones_like(row)
     return csr_matrix((data, (row, col)), shape=(N, N))
 
+def contacts_rec_to_csr(N, records, lamb):
+    """
+    Faster function to take advantage of records array
+    and avoid loops
+    @author: Fabio Mazza
+    """
+    if isinstance(records, np.recarray):
+        records.dtype.names = "i","j","t","m"
+        row = records["i"]
+        col = records["j"]
+        value = records["m"]
+    else:
+        rec = np.array(records)
+        row = rec[:,0].astype(int)
+        col = rec[:,1].astype(int)
+        value = rec[:,2].astype(float)
+    data = lamb*np.array(value)*np.ones_like(row)
+    return csr_matrix((data, (row, col)), shape=(N, N))
+
 
 def get_infection_probas_mean_field(probas, transmissions):
     """
