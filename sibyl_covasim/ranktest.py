@@ -134,7 +134,7 @@ class RankTester(cvi.Intervention):
             test_probs[quar_test_inds] *= self.quar_test
 
             ## remove already diagnosed
-            already_diagnosed = sim.people.diagnosed | np.logical_not(np.isnan(self.tester.date_diagnosed))
+            already_diagnosed = sim.people.diagnosed #| np.logical_not(np.isnan(self.tester.date_diagnosed))
             idx_diagnosed = cvu.true(already_diagnosed)
             test_probs[idx_diagnosed] = 0.
             

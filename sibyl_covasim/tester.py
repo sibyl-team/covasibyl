@@ -50,7 +50,7 @@ class CovasimTester:
         self.N = pars["pop_size"]
         self.date_diagn_state = np.full((3,self.N), np.nan)
         self.date_diagnosed = np.full(self.N, np.nan)
-        #self.diagnosed = np.full(self.N, np.nan)
+        self.diagnosed = np.zeros(self.N,dtype=bool)
         self.date_posit_test = np.full_like(self.date_diagnosed, np.nan)
     
     def _not_diagnosed(self):
@@ -73,7 +73,7 @@ class CovasimTester:
         inds = np.unique(inds)
         num_tests = len(inds)
         ## check that there are no diagnosed (eg positive-tested) people
-        diagnosed = np.logical_not(np.isnan(people.date_diagnosed[inds]) & np.isnan(self.date_diagnosed[inds]))
+        diagnosed = people.diagnosed[inds] | self.diagnosed[inds]
         assert diagnosed.sum() == 0
 
         people.tested[inds] = True
@@ -92,13 +92,16 @@ class CovasimTester:
         susc_inds = cvu.itruei(people.susceptible, inds_test)
         neg_test = random_all_p(test_specificity, len(susc_inds))
         res_susc = susc_inds[neg_test]
-        res_infected = susc_inds[np.logical_not(neg_test)]
+        
+        res_infected = susc_inds[np.logical_not(neg_test)] # false positive
+        if(test_specificity >= 1.):
+            assert len(res_infected) == 0
 
         ### find infectious indices
-        inf_or_exp = people.infectious[inds_test] | people.exposed[inds_test]
-        is_I_idcs = cvu.true(inf_or_exp) #return indices
+        #inf_or_exp = people.infectious[inds_test] | people.exposed[inds_test]
+        is_I_idcs = cvu.itruei(people.infectious, inds_test) #return indices
         ## find the ones which test positive
-        pos_test      = random_all_p(test_sensitivity, len(is_I_idcs))
+        pos_test      = np.random.rand(len(is_I_idcs)) < test_sensitivity #random_all_p(test_sensitivity, len(is_I_idcs))
         is_inf_pos    = is_I_idcs[pos_test]
         ### concatenate results
         res_susc = np.concatenate((res_susc, is_I_idcs[np.logical_not(pos_test)]))
@@ -114,10 +117,9 @@ class CovasimTester:
         is_recov = people.recovered[inds_test] | people.dead[inds_test]
         rec_inds = cvu.true(is_recov)
         # TODO: use specificity here?
-        ## check they haven't been diagnosed before?
-        res_recov = rec_inds#rec_inds[np.isnan(people.date_diagnosed[rec_inds])]
+        res_recov = rec_inds
         
-        assert len(res_recov) + len(res_infected) + len(res_susc) == num_tests
+        #assert len(res_recov) + len(res_infected) + len(res_susc) == num_tests
         ## Keep this for compatibility
         # Store the date the person will be diagnosed, as well as the date they took the test which will come back positive
         self.date_diagnosed[final_inf_idcs] = sim.t + test_delay
@@ -129,6 +131,10 @@ class CovasimTester:
         self.date_diagn_state[0, res_susc] = sim.t + test_delay
         self.date_diagn_state[1, final_inf_idcs] = sim.t + test_delay
         self.date_diagn_state[2, res_recov] = sim.t + test_delay
+
+        ## handle diagnosed
+        diag_inds  = people.check_inds(self.diagnosed, self.date_diagnosed, filter_inds=None) # Find who was actually diagnosed on this timestep
+        self.diagnosed[diag_inds] = True
 
         return num_lost
 
