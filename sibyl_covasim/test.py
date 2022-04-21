@@ -1,6 +1,7 @@
 import numpy as np
-import covasim.interventions as cvi
+
 import covasim.utils as cvu
+import covasim.defaults as cvd
 
 # TODO: make class to do tests, with delay
 
@@ -17,6 +18,28 @@ def random_all_p(p, n, rand=np.random):
     '''
     return rand.random(n) < p
 
+def get_default_test_p_sym(sim, t, symp_test, test_pdf, test_probs=None):
+    """
+    Default way of testing symptomatic individuals
+    """
+    # Calculate test probabilities for people with symptoms
+    N = len(sim.people.age)
+    symp_inds = cvu.true(sim.people.symptomatic)
+    if test_probs is None:
+        test_probs = np.ones(N)
+    if test_pdf: # Handle the onset to swab delay
+        symp_time = cvd.default_int(t - sim.people.date_symptomatic[symp_inds]) # Find time since symptom onset
+        inv_count = (np.bincount(symp_time)/len(symp_time)) # Find how many people have had symptoms of a set time and invert
+        count = np.nan * np.ones(inv_count.shape) # Initialize the count
+        count[inv_count != 0] = 1/inv_count[inv_count != 0] # Update the counts where defined
+        symp_test *= test_pdf.pdf(symp_time) * count[symp_time] # Put it all together
+        ### comment on above: basically we use the probability from pdf, but
+        ### then divide by the empirical frequency (number of people with delay =d / tot number of symptomatics)
+        ### This way, the less frequent delays are more likely to be chosen
+
+    test_probs[symp_inds] *= symp_test # Update the test probabilities
+    return test_probs
+
 class CovasimTester:
 
     def __init__(self, sim, maxtest=None):
@@ -25,7 +48,7 @@ class CovasimTester:
         self.N = pars["pop_size"]
         self.date_diagn_state = np.full((3,self.N), np.nan)
         self.date_diagnosed = np.full(self.N, np.nan)
-        self.date_pos_test = np.full_like(self.date_diagnosed, np.nan)
+        self.date_posit_test = np.full_like(self.date_diagnosed, np.nan)
 
     def apply_tests(self, sim, inds, test_sensitivity=1.0, test_specificity=1.0, loss_prob=0.0, test_delay=0):
         '''
@@ -62,12 +85,12 @@ class CovasimTester:
 
         ### find infectious indices
         inf_or_exp = people.infectious[inds_test] | people.exposed[inds_test]
-        is_infectious = cvu.true(inf_or_exp)
+        is_I_idcs = cvu.true(inf_or_exp) #return indices
         ## find the ones which test positive
-        pos_test      = random_all_p(test_sensitivity, len(is_infectious))
-        is_inf_pos    = is_infectious[pos_test]
+        pos_test      = random_all_p(test_sensitivity, len(is_I_idcs))
+        is_inf_pos    = is_I_idcs[pos_test]
         ### concatenate results
-        res_susc = np.concatenate((res_susc, is_infectious[np.logical_not(pos_test)]))
+        res_susc = np.concatenate((res_susc, is_I_idcs[np.logical_not(pos_test)]))
         res_infected = np.concatenate((res_infected, is_inf_pos))
 
         ## infectious, positive, not diagnosed yet
@@ -86,7 +109,7 @@ class CovasimTester:
         ## Keep this for compatibility
         # Store the date the person will be diagnosed, as well as the date they took the test which will come back positive
         self.date_diagnosed[inf_not_diagnosed] = sim.t + test_delay
-        self.date_pos_test[inf_not_diagnosed] = sim.t
+        self.date_posit_test[inf_not_diagnosed] = sim.t
 
         self.date_diagn_state[0, res_susc] = sim.t + test_delay
         self.date_diagn_state[1, inf_not_diagnosed] = sim.t + test_delay

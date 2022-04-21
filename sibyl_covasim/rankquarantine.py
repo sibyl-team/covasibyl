@@ -1,5 +1,4 @@
 import numpy as np
-import scipy.sparse as sp
 import sciris as sc
 from sklearn.metrics import roc_curve, auc
 
@@ -7,33 +6,10 @@ import covasim.interventions as cvi
 import covasim.utils as cvu
 import covasim.defaults as cvd
 from .test import CovasimTester
+from .utils import get_contacts_day
 
 import pandas as pd
 
-class Tester:
-    pass
-
-def filter_contacts(p1, p2, beta):
-    """
-    Remove invalid contacts, then duplicate them
-    """
-    valid = (p1!=p2)
-    i = p1[valid]
-    j = p2[valid]
-    m = beta[valid]
-    return np.concatenate((i,j)), np.concatenate((j,i)), np.concatenate((m,m))
-
-def get_contacts_day(people):
-    N = len(people.sex)
-    c = 0
-    for n,lay in people.contacts.items():
-        #print(n,lay)
-        w = people.pars["beta_layer"][n]
-        u = filter_contacts(**lay)
-        mat = sp.csr_matrix((u[2]*w,(u[0],u[1])), shape=(N,N))
-        c += mat
-    cend = c.tocoo()
-    return pd.DataFrame(dict(zip(["i","j","m"],(cend.row, cend.col, cend.data))) )
 
 def check_free_birds(people):
     free_idx = (people.infectious & np.logical_not(people.quarantined)).nonzero()[0]
@@ -135,15 +111,17 @@ class Mitigation(cvi.Intervention):
         self._tested_idx = []
 
         self.hist = []
+        self.days_conts = []
 
     def _prob_test_sympt(self, sim, t, test_probs=None):
         """
         Default way of testing symptomatic individuals
         """
         # Calculate test probabilities for people with symptoms
+        N = len(sim.people.age)
         symp_inds = cvu.true(sim.people.symptomatic)
         if test_probs is None:
-            test_probs = np.ones(self.N)
+            test_probs = np.ones(N)
         symp_test = self.symp_test
         if self.swab_pdf: # Handle the onset to swab delay
             symp_time = cvd.default_int(t - sim.people.date_symptomatic[symp_inds]) # Find time since symptom onset
@@ -164,6 +142,7 @@ class Mitigation(cvi.Intervention):
         """
         diagnosed_today = (sim.people.date_diagnosed == sim.t) | (self.tester.date_diagnosed == sim.t)
         inds_quar = cvu.true(diagnosed_today)
+        ### WRONG: people will be in quarantine BEFORE being tested
         sim.people.schedule_quarantine(inds_quar,
                         start_date=sim.t + self.notif_delay,
                         period=self.quar_period - self.notif_delay)
@@ -179,11 +158,14 @@ class Mitigation(cvi.Intervention):
         if(day < self.start_day):
             ## do nothing
             self.daily_obs = []
-        if self.debug:
-            print(f"Day {day} observations: ", len(self.daily_obs))
+        
         # get contacts of the day
         conts_m = get_contacts_day(sim.people)
         conts_m["day"] = day
+        self.days_conts.append(day)
+
+        if self.debug:
+            print(f"Day {day}, active: {day >= self.start_day}; n_obs: {len(self.daily_obs):d}, num days conts: {len(self.days_conts)}", )
         #contacts_day = [(i,j,day, val) for i,j,val in zip(conts_m.row, conts_m.col, conts_m.data)]
         contacts_day = conts_m[["i","j","day","m"]].to_records(index=False)
         
@@ -259,6 +241,8 @@ class Mitigation(cvi.Intervention):
             ## quarantine individuals
             inds_quar = self._apply_quarantine(sim)
             print("Q TOT: {:d}, today: {:d}".format(sum(sim.people.quarantined), len(inds_quar)),end=" ")
+
+        
         free_birds = len(check_free_birds(sim.people))
         if day >= self.start_day:
             print("free {:d}".format(free_birds))
