@@ -5,7 +5,7 @@ from sklearn.metrics import roc_curve, auc
 import covasim.interventions as cvi
 import covasim.utils as cvu
 import covasim.defaults as cvd
-from .test import CovasimTester
+from .tester import CovasimTester
 from .utils import get_contacts_day
 
 import pandas as pd
