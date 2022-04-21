@@ -3,6 +3,8 @@ import numpy as np
 import covasim.utils as cvu
 import covasim.defaults as cvd
 
+from . import utils
+
 # TODO: make class to do tests, with delay
 
 def random_all_p(p, n, rand=np.random):
@@ -42,13 +44,17 @@ def get_default_test_p_sym(sim, t, symp_test, test_pdf, test_probs=None):
 
 class CovasimTester:
 
-    def __init__(self, sim, maxtest=None):
+    def __init__(self, sim, seed=None):
         
         pars = sim.pars
         self.N = pars["pop_size"]
         self.date_diagn_state = np.full((3,self.N), np.nan)
         self.date_diagnosed = np.full(self.N, np.nan)
+        #self.diagnosed = np.full(self.N, np.nan)
         self.date_posit_test = np.full_like(self.date_diagnosed, np.nan)
+    
+    def _not_diagnosed(self):
+        return np.isnan(self.date_diagnosed)
 
     def apply_tests(self, sim, inds, test_sensitivity=1.0, test_specificity=1.0, loss_prob=0.0, test_delay=0):
         '''
@@ -70,8 +76,12 @@ class CovasimTester:
         people.tested[inds] = True
         people.date_tested[inds] = sim.t # Only keep the last time they tested
 
+        ## check that there are no diagnosed (eg positive-tested) people
+        diagnosed = np.isnan(people.date_diagnosed[inds]) | np.isnan(self.date_diagnosed[inds])
+        assert diagnosed.sum() == 0
+        
         ## lost tests
-        not_lost = cvu.n_binomial(1.0-loss_prob, len(inds))
+        not_lost = utils.n_binomial(1.0-loss_prob, len(inds))
         inds_test = inds[not_lost]
         num_lost = np.logical_not(not_lost).sum()
         #if(num_lost > 1):
@@ -92,12 +102,13 @@ class CovasimTester:
         ### concatenate results
         res_susc = np.concatenate((res_susc, is_I_idcs[np.logical_not(pos_test)]))
         res_infected = np.concatenate((res_infected, is_inf_pos))
-
-        ## infectious, positive, not diagnosed yet
-        inf_not_diagnosed = res_infected[np.isnan(people.date_diagnosed[res_infected]) & np.isnan(self.date_diagnosed[res_infected])]
+        
+        """## infectious, positive, not diagnosed yet
+        inf_not_diagnosed = res_infected[]
         #not_lost      = cvu.n_binomial(1.0-loss_prob, len(not_diagnosed))
         #final_inds    = not_diagnosed[not_lost]
-        inf_not_diagnosed = res_infected
+        """
+        final_inf_idcs = res_infected
         # check for recovered
         is_recov = people.recovered[inds_test] | people.dead[inds_test]
         rec_inds = cvu.true(is_recov)
@@ -108,14 +119,17 @@ class CovasimTester:
         assert len(res_recov) + len(res_infected) + len(res_susc) == num_tests
         ## Keep this for compatibility
         # Store the date the person will be diagnosed, as well as the date they took the test which will come back positive
-        self.date_diagnosed[inf_not_diagnosed] = sim.t + test_delay
-        self.date_posit_test[inf_not_diagnosed] = sim.t
+        self.date_diagnosed[final_inf_idcs] = sim.t + test_delay
+        self.date_posit_test[final_inf_idcs] = sim.t
+        ## COPY ON COVASIM: important!! -> diagnosed individuals are isolated
+        sim.people.date_diagnosed[final_inf_idcs] = sim.t +test_delay
+        sim.people.date_pos_test[final_inf_idcs] = sim.t
 
         self.date_diagn_state[0, res_susc] = sim.t + test_delay
-        self.date_diagn_state[1, inf_not_diagnosed] = sim.t + test_delay
+        self.date_diagn_state[1, final_inf_idcs] = sim.t + test_delay
         self.date_diagn_state[2, res_recov] = sim.t + test_delay
 
-        return
+        return num_lost
 
     def get_results(self, day):
 
