@@ -72,13 +72,14 @@ class CovasimTester:
         people = sim.people
         inds = np.unique(inds)
         num_tests = len(inds)
+        ## check that there are no diagnosed (eg positive-tested) people
+        diagnosed = np.logical_not(np.isnan(people.date_diagnosed[inds]) & np.isnan(self.date_diagnosed[inds]))
+        assert diagnosed.sum() == 0
 
         people.tested[inds] = True
         people.date_tested[inds] = sim.t # Only keep the last time they tested
 
-        ## check that there are no diagnosed (eg positive-tested) people
-        diagnosed = np.isnan(people.date_diagnosed[inds]) | np.isnan(self.date_diagnosed[inds])
-        assert diagnosed.sum() == 0
+        
         
         ## lost tests
         not_lost = utils.n_binomial(1.0-loss_prob, len(inds))

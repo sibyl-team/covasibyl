@@ -116,7 +116,7 @@ class RankTester(cvi.Intervention):
         self.days_cts.append(day)
 
         if self.debug:
-            print(f"Day {day}, active: {ACTIVE}; n_obs: {len(obs_day):d}, num days conts: {len(self.days_conts)}", )
+            print(f"Day {day}, active: {ACTIVE}; n_obs: {len(obs_day):d}, num days conts: {len(self.days_cts)}", )
         #contacts_day = [(i,j,day, val) for i,j,val in zip(conts_m.row, conts_m.col, conts_m.data)]
         contacts_day = conts_m[["i","j","day","m"]].to_records(index=False)
 
@@ -152,19 +152,20 @@ class RankTester(cvi.Intervention):
             test_probs[test_inds_rnd] = 0.
             ## get from rank
             rank_good = rank[(test_probs>0)].sort_values(ascending=False)
-            if len(rank_good==0):
-                warnings.warn("No tests from ranker")
+ 
+            if len(rank_good)==0:
+                warnings.warn("No tests from ranker, test_probs: {}".format(sum(test_probs>0)))
             test_inds = rank_good[:self.n_tests_algo_day].index.to_numpy()
             ## accuracy
             true_inf = sim.people.infectious
-            real_inf = true_inf[test_inds].sum()
-            if real_inf > 0:
+            true_inf_rk = true_inf[test_inds].sum()
+            if true_inf_rk > 0:
                 fpr, tpr, _ = roc_curve(true_inf[test_inds], rank[test_inds].to_numpy())
                 auc_inf = auc(fpr,tpr)  #if real_inf > 0 else np.nan
             else:
                 auc_inf = np.nan
-            print("day {}: AUC_I: {:4.3f}, accu {:.2%}".format(
-                day,auc_inf, real_inf/self.n_tests_algo_day) ,
+            print("day {}: AUC_I_rk: {:4.3f}, accu {:.2%}".format(
+                day,auc_inf, true_inf_rk/self.n_tests_algo_day) ,
                 end=" ")
 
             ### test actually
@@ -184,7 +185,7 @@ class RankTester(cvi.Intervention):
             stats_tests = np.unique(results_day[:,1], return_counts=True)
             stats = np.zeros(3,dtype=int)
             stats[stats_tests[0]] = stats_tests[1]
-            assert stats_tests[1].sum() == self.n_tests_algo_day + self.n_tests_symp
+            #assert stats_tests[1].sum() == self.n_tests_algo_day + self.n_tests_symp
             print("res: ", stats, f" I: {sim.people.infectious.sum()}", end=" " )
             for s,k in enumerate(["S","I","R"]):
                 day_stats["test_"+k] = stats[s]
