@@ -179,7 +179,7 @@ class MeanFieldRanker(AbstractRanker):
         """
         #check_inputs(t_day, daily_contacts, daily_obs)
         # append daily_contacts and daily_obs
-        daily_transmissions = records_to_csr(self.N, daily_contacts, self.lamb)
+        daily_transmissions = contacts_rec_to_csr(self.N, daily_contacts, self.lamb)
         self.transmissions.append(daily_transmissions)
         self.observations += [
             dict(i=i, s=s, t_test=t_test) for i, s, t_test in daily_obs
