@@ -15,6 +15,8 @@ class SibRanker(AbstractRanker):
                 damp1 = 0.5,
                 tol = 1e-3,
                 memory_decay = 1.0,
+                fnr = 0.0,
+                fpr = 0.0,
                 tau = None,
                 print_callback = lambda t,err,f: print(t,err)
                 ):
@@ -34,6 +36,8 @@ class SibRanker(AbstractRanker):
         self.memory_decay = memory_decay
         self.print_callback = print_callback
         self.tau = tau
+        self.fnr = fnr
+        self.fpr = fpr
 
 
     def init(self, N, T):
@@ -54,11 +58,18 @@ class SibRanker(AbstractRanker):
         prob_i, prob_r = pi(), pr()
         self.pi = np.array([np.array(prob_i.theta) for i in range(N)])
         self.pr = np.array([np.array(prob_r.theta) for i in range(N)])
+        self.tneg = sib.Test(1.0 - self.fnr, self.fnr, 1.0 - self.fnr)
+        self.tpos = sib.Test(self.fpr, 1.0 - self.fpr, self.fpr)
+
 
     def rank(self, t_day, daily_contacts, daily_obs, data):
 
         for obs in daily_obs:
-            self.f.append_observation(obs[0],obs[1],obs[2])
+            #self.f.append_observation(obs[0],obs[1],obs[2])
+            if obs[1] == 1:
+                self.f.append_observation(obs[0], self.tpos, obs[2])
+            else:
+                self.f.append_observation(obs[0], self.tneg, obs[2])
             self.all_obs[obs[2]] += [obs]
 
         

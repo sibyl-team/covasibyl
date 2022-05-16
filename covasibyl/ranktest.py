@@ -1,3 +1,4 @@
+from cmath import log
 import warnings
 import numpy as np
 import pandas as pd
@@ -34,7 +35,10 @@ class RankTester(cvi.Intervention):
                 loss_prob=0., test_delay=0,
                 swab_delay=None,
                 quar_policy=None,
-                debug=False):
+                iso_cts_strength = 0.1,
+                logger=None,
+                debug=False
+                ):
 
         super().__init__(label="Mitigation: "+label)
 
@@ -52,7 +56,9 @@ class RankTester(cvi.Intervention):
         self.quar_test   = quar_test # Probability of testing people in quarantine
         self.quar_policy = quar_policy if quar_policy else 'start'
         # If provided, get the distribution's pdf -- this returns an empty dict if None is supplied
-        self.test_pdf = cvu.get_pdf(**sc.mergedicts(swab_delay)) 
+        self.test_pdf = cvu.get_pdf(**sc.mergedicts(swab_delay))
+        # multiply contacts strength by this factor for isolated individuals
+        self.iso_cts_strength = iso_cts_strength
         self.debug = debug
 
         self.contacts_day = None
@@ -60,7 +66,7 @@ class RankTester(cvi.Intervention):
         self.N = None
         self.all_observ = None
         self.daily_obs = None
-        self.ranker_data = None
+        self.ranker_data = {"logger":logger}
         self.tester = None
         self._tested_idx = None
         self.hist = []
@@ -89,7 +95,7 @@ class RankTester(cvi.Intervention):
         
         self.all_observ =[]
         self.daily_obs = []
-        self.ranker_data = {}
+        #self.ranker_data = {}
         self._tested_idx = []
 
         self.hist = []
@@ -112,6 +118,10 @@ class RankTester(cvi.Intervention):
         N = len(sim.people.age)
 
         conts_m = utils.get_contacts_day(sim.people)
+        ## remove contacts that are isolated (tested)
+        tested_iso = cvu.true(sim.people.diagnosed)
+        conts_m = utils.filt_contacts_df(conts_m, tested_iso, self.iso_cts_strength, N)
+
         conts_m["day"] = day
         self.days_cts.append(day)
 
@@ -200,3 +210,8 @@ class RankTester(cvi.Intervention):
         day_stats["free_birds"] = free_birds
         day_stats["num_diagnosed_day"] = (diagnosed_today).sum()
         day_stats["n_infectious"] = sim.people.infectious.sum()
+
+    def prepare_export(self):
+        ### delete the ranker to save memory
+        self.ranker = None
+        del self.ranker_data["logger"]

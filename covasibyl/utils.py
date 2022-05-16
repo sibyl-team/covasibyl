@@ -2,10 +2,11 @@ from covasim import immunity
 import numpy as np
 #import numba as nb
 import scipy.sparse as sp
+from scipy.special import gamma as gamma_f
 import pandas as pd
 
 
-def filter_contacts(p1, p2, beta):
+def remove_invalid_cts(p1, p2, beta):
     """
     Remove invalid contacts, then duplicate them
     """
@@ -21,11 +22,29 @@ def get_contacts_day(people):
     for n,lay in people.contacts.items():
         #print(n,lay)
         w = people.pars["beta_layer"][n]
-        u = filter_contacts(**lay)
+        u = remove_invalid_cts(**lay)
         mat = sp.csr_matrix((u[2]*w,(u[0],u[1])), shape=(N,N))
         c += mat
     cend = c.tocoo()
     return pd.DataFrame(dict(zip(["i","j","m"],(cend.row, cend.col, cend.data))) )
+
+def _cts_mat_to_df(c, idcs=["i","j","m"]):
+    """
+    Transform sparse contact matrix into dataframe of contacts
+    """
+    cend = c.tocoo()
+    return pd.DataFrame(dict(zip(idcs,(cend.row, cend.col, cend.data))) )
+
+def filt_contacts_df(cts, idcs, multipl, N):
+    mat  = sp.coo_matrix((cts["m"], (cts["i"], cts["j"]))).tocsr()
+    d = np.ones(N)
+    d[idcs] = multipl
+    filt = sp.diags(d, format="csr")
+
+    matres = filt.dot(mat.dot(filt))
+
+    return _cts_mat_to_df(matres)
+
 
 def check_free_birds(people):
     free_idx = (people.infectious & np.logical_not(people.quarantined | people.diagnosed) ).nonzero()[0]
@@ -77,3 +96,6 @@ def n_binomial(prob, n, rng=None):
     if rng is None:
         rng = np.random
     return rng.random(n) < prob
+
+def gamma_pdf_full(x, alfa, beta ):
+    return beta**alfa*x**(alfa-1)*np.exp(-1*beta*x)/gamma_f(alfa)
