@@ -119,7 +119,7 @@ class CovasimTester:
         is_recov = people.recovered[inds_test] | people.dead[inds_test]
         rec_inds = cvu.true(is_recov)
         # TODO: use specificity here?
-        res_recov = rec_inds
+        res_recov = inds_test[rec_inds]
         
         #assert len(res_recov) + len(res_infected) + len(res_susc) == num_tests
         ## Keep this for compatibility
