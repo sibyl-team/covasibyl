@@ -87,9 +87,11 @@ class CovasimTester:
         num_lost = np.logical_not(not_lost).sum()
         #if(num_lost > 1):
         #    print(f"Lost {num_lost} tests")
+        ## exposed individuals remain exposed when infectious
+        is_E = (people.exposed &(~people.infectious))
 
         ## check susceptibles
-        susc_inds = cvu.itruei(people.susceptible, inds_test)
+        susc_inds = cvu.itruei((people.susceptible | is_E), inds_test)
         neg_test = random_all_p(test_specificity, len(susc_inds))
         res_susc = susc_inds[neg_test]
         

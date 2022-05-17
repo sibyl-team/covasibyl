@@ -84,6 +84,30 @@ class RankTester(cvi.Intervention):
 
         self.tester = CovasimTester(sim)
 
+    def to_json(self):
+        '''
+        Return JSON-compatible representation
+
+        Returns:
+            JSON-serializable representation (typically a dict, but could be anything else)
+        '''
+        which = self.__class__.__name__
+        pars = {"label": self.input_args["label"], "ranker": self.ranker.__class__.__name__,
+        "n_random": self.n_tests_rand, "n_algo": self.n_tests_algo_day}
+        output = dict(which=which, pars=pars)
+        return output
+
+    def __repr__(self):
+        try:
+            json = self.to_json()
+            which = f'{self.__module__}.{self.__class__.__name__}'
+            pars = json['pars']
+            parstr = ', '.join([f'{k}={v}' for k,v in pars.items()])
+            output = f"{which}({parstr})"
+        except Exception as E:
+            output = type(self) + f' (error: {str(E)})' # If that fails, print why
+        return output
+
         
     
     def initialize(self, sim=None):
