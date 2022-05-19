@@ -154,8 +154,14 @@ class RankTester(cvi.Intervention):
         #contacts_day = [(i,j,day, val) for i,j,val in zip(conts_m.row, conts_m.col, conts_m.data)]
         contacts_day = conts_m[["i","j","day","m"]].to_records(index=False)
 
+        FIND_INFECTED = sim.people.infectious.sum() > 0 or sim.people.exposed.sum()>0
+
         ### get rank from the algorithm
-        rank_algo = self.ranker.rank(day, contacts_day, obs_day, self.ranker_data)
+        if FIND_INFECTED:
+            rank_algo = self.ranker.rank(day, contacts_day, obs_day, self.ranker_data)
+        else:
+            warnings.warn("Epidemy ended, returning random ranking")
+            rank_algo = list(zip(np.arange(N),np.random.rand(N)))
 
         if ACTIVE:
             test_probs = np.ones(N)
