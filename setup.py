@@ -21,5 +21,5 @@ setup(
         "scipy",
         "pandas",
         #"sib",
-        "covasim"],
+        "covasim==3.1.2"],
 )
