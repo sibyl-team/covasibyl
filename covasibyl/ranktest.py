@@ -198,9 +198,12 @@ class RankTester(cvi.Intervention):
                 auc_inf = auc(fpr,tpr)  #if real_inf > 0 else np.nan
             else:
                 auc_inf = np.nan
+
+            accu = true_inf_rk / min(len(test_inds), true_inf.sum())
             print("day {}: AUC_I_rk: {:4.3f}, accu {:.2%}".format(
-                day,auc_inf, true_inf_rk/self.n_tests_algo_day) ,
+                day,auc_inf,accu) ,
                 end=" ")
+            #print("", end=" ")
 
             ### test actually
             test_indcs_all = np.concatenate((test_inds_rnd, test_inds))
