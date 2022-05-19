@@ -100,8 +100,9 @@ class TestNumQuar(Intervention):
             count = np.nan * np.ones(inv_count.shape) # Initialize the count
             count[inv_count != 0] = 1/inv_count[inv_count != 0] # Update the counts where defined
             symp_test *= self.pdf.pdf(symp_time) * count[symp_time] # Put it all together
-
-        test_probs[symp_inds] *= symp_test # Update the test probabilities
+        
+        ## Ignore the fact that some quarantined may be symptomatic
+        test_probs[np.setdiff1d(symp_inds, quar_test_inds)] *= symp_test # Update the test probabilities
 
         # Handle symptomatic testing, taking into account prevalence of ILI symptoms
         if self.ili_prev is not None:
@@ -109,7 +110,8 @@ class TestNumQuar(Intervention):
                 n_ili = int(self.ili_prev[rel_t] * sim['pop_size'])  # Number with ILI symptoms on this day
                 ili_inds = cvu.choose(sim['pop_size'], n_ili) # Give some people some symptoms. Assuming that this is independent of COVID symptomaticity...
                 ili_inds = np.setdiff1d(ili_inds, symp_inds)
-                test_probs[ili_inds] *= self.symp_test
+                ili_inds_noQ = np.setdiff1d(ili_inds, quar_test_inds) ## if they have symptoms, but not in quarantine
+                test_probs[ili_inds_noQ] *= self.symp_test            ## multiply by the symptomatic prob
 
         
 
