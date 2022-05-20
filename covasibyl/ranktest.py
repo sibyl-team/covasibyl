@@ -223,7 +223,7 @@ class RankTester(cvi.Intervention):
             ## date_tested is the date in which the test has been required
             results_day = self.tester.get_results(day)
             ## set obs for the next day
-            self.daily_obs = [(idx, st, day) for idx, st in results_day]
+            self.daily_obs = results_day # (idx, st, day)
 
             stats_tests = np.unique(results_day[:,1], return_counts=True)
             stats = np.zeros(3,dtype=int)
@@ -234,15 +234,25 @@ class RankTester(cvi.Intervention):
                 day_stats["test_"+k] = stats[s]
 
         free_birds = len(utils.check_free_birds(sim.people))
+        inf_quar = (sim.people.infectious & sim.people.quarantined).sum()
         if ACTIVE:
             print("free {:d}".format(free_birds))
         diagnosed_today = (sim.people.date_diagnosed == sim.t) | (self.tester.date_diagnosed == sim.t)
 
-        day_stats["num_diagnosed"] = (sim.people.diagnosed.sum())
+        day_stats["n_diag"] = (sim.people.diagnosed.sum())
         #self.ranker_data["num_diagnosed"][day] = (sim.people.diagnosed.sum())
         day_stats["free_birds"] = free_birds
-        day_stats["num_diagnosed_day"] = (diagnosed_today).sum()
+        day_stats["n_diag_today"] = (diagnosed_today).sum()
         day_stats["n_infectious"] = sim.people.infectious.sum()
+        day_stats["n_quar"] = (sim.people.quarantined).sum()
+        day_stats["n_inf_quar"] = inf_quar
+        day_stats["n_inf_untested"] = (sim.people.infectious & (~sim.people.diagnosed)).sum()
+        for s,k in enumerate(["S","I","R"]):
+            ck = "test_"+k
+            if ck not in day_stats:
+                day_stats[ck] = 0
+
+        self.hist.append(day_stats)
 
     def prepare_export(self):
         ### delete the ranker to save memory

@@ -85,14 +85,16 @@ class CovasimTester:
         self.reinit()
     
     def reinit(self):
-        self.date_diagn_state = np.full((3,self.N), np.nan)
+        #self.date_diagn_state = np.full((3,self.N), np.nan)
         self.date_diagnosed = np.full(self.N, np.nan)
         self.diagnosed = np.zeros(self.N,dtype=bool)
 
-        self.all_tests = []
+        self.tests_stats = []
 
         self.date_posit_test = np.full_like(self.date_diagnosed, np.nan)
         self.randstate = np.random.RandomState(np.random.PCG64(self.rand_seed))
+
+        self.test_results={}
         
     
     def _not_diagnosed(self):
@@ -123,7 +125,7 @@ class CovasimTester:
         people.date_tested[inds] = sim.t # Only keep the last time they tested
 
         
-        
+        today = sim.t
         
         ## lost tests
         not_lost = utils.n_binomial(1.0-loss_prob, len(inds))
@@ -180,9 +182,16 @@ class CovasimTester:
         sim.people.date_diagnosed[res_infected] = sim.t +test_delay
         sim.people.date_pos_test[res_infected] = sim.t
 
-        self.date_diagn_state[0, res_susc] = sim.t + test_delay
-        self.date_diagn_state[1, res_infected] = sim.t + test_delay
-        self.date_diagn_state[2, res_recov] = sim.t + test_delay
+        day_res =  sim.t + test_delay
+        if day_res not in self.test_results:
+            self.test_results[day_res] = []
+        
+        res_tests_t = self.test_results[day_res]
+
+        res_tests_t.extend((i, 0, today) for i in res_susc)
+        res_tests_t.extend((i, 1, today) for i in res_infected)
+        res_tests_t.extend((i, 2, today) for i in res_recov)
+        
 
         today_tests.loc[res_susc, "res_state"] = 0
         today_tests.loc[res_infected, "res_state"] = 1
@@ -193,10 +202,11 @@ class CovasimTester:
         diag_inds  = people.check_inds(self.diagnosed, self.date_diagnosed, filter_inds=None) # Find who was actually diagnosed on this timestep
         self.diagnosed[diag_inds] = True
 
-        self.all_tests.append(today_tests.to_records())
+        self.tests_stats.append(today_tests.to_records())
 
         return num_lost
 
     def get_results(self, day):
 
-        return np.stack(np.where(self.date_diagn_state == day),1)[:,::-1]
+        return np.array(self.test_results[day])
+        #np.stack(np.where(self.date_diagn_state == day),1)[:,::-1]
