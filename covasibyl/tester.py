@@ -35,8 +35,6 @@ def write_tests_state(people, stats_df, inds_test):
     stats_df.loc[cvu.itruei(people.recovered, inds_test), "t_state"] = "R"
 
 
-# TODO: make class to do tests, with delay
-
 def random_all_p(p, n, rand=np.random):
     '''
     Perform multiple binomial (Bernolli) trials
@@ -44,6 +42,7 @@ def random_all_p(p, n, rand=np.random):
     Args:
         p (float): probability of each trial succeeding
         n (int): number of trials (size of array)
+        rand   : give the random number generator if you need to
 
     Returns:
         Boolean array of which trials succeeded
@@ -127,11 +126,13 @@ class CovasimTester:
         #if(num_lost > 1):
         #    print(f"Lost {num_lost} tests")
         ## exposed individuals remain exposed when infectious
-        is_E = (people.exposed &(~people.infectious))
 
         write_tests_state(people, today_tests, inds_test)
 
         ## check susceptibles
+        # exposed people test as susceptible
+        ## exposed people remain exposed when infectious on covasim
+        is_E = (people.exposed &(~people.infectious))
         susc_inds = cvu.itruei((people.susceptible | is_E), inds_test)
         neg_test = random_all_p(test_specificity, len(susc_inds))
         res_susc = susc_inds[neg_test]
@@ -144,41 +145,35 @@ class CovasimTester:
         #inf_or_exp = people.infectious[inds_test] | people.exposed[inds_test]
         is_I_idcs = cvu.itruei(people.infectious, inds_test) #return indices
         ## find the ones which test positive
-        pos_test      = np.random.rand(len(is_I_idcs)) < test_sensitivity #random_all_p(test_sensitivity, len(is_I_idcs))
+        pos_test      = random_all_p(test_sensitivity, len(is_I_idcs))
         is_inf_pos    = is_I_idcs[pos_test]
-
         
         ### concatenate results
         res_susc = np.concatenate((res_susc, is_I_idcs[np.logical_not(pos_test)]))
         res_infected = np.concatenate((res_infected, is_inf_pos))
         
-        """## infectious, positive, not diagnosed yet
-        inf_not_diagnosed = res_infected[]
-        #not_lost      = cvu.n_binomial(1.0-loss_prob, len(not_diagnosed))
-        #final_inds    = not_diagnosed[not_lost]
-        """
-        final_inf_idcs = res_infected
         # check for recovered
-        is_recov = people.recovered[inds_test] | people.dead[inds_test]
-        rec_inds = cvu.true(is_recov)
-        # TODO: use specificity here? YES
-        res_recov = inds_test[rec_inds]
-        
+        ids_rec = cvu.itruei(people.recovered, inds_test)
+        # Use specificity for recovered people -> they don't have the disease anymore
+        test_R = random_all_p(test_specificity, len(ids_rec))
+        res_recov = np.concatenate((ids_rec[test_R], cvu.itruei(people.dead, inds_test))) #inds_test[rec_inds]
+        res_infected = np.concatenate((res_infected, ids_rec[~test_R]))
+
         #assert len(res_recov) + len(res_infected) + len(res_susc) == num_tests
         ## Keep this for compatibility
         # Store the date the person will be diagnosed, as well as the date they took the test which will come back positive
-        self.date_diagnosed[final_inf_idcs] = sim.t + test_delay
-        self.date_posit_test[final_inf_idcs] = sim.t
+        self.date_diagnosed[res_infected] = sim.t + test_delay
+        self.date_posit_test[res_infected] = sim.t
         ## COPY ON COVASIM: important!! -> diagnosed individuals are isolated
-        sim.people.date_diagnosed[final_inf_idcs] = sim.t +test_delay
-        sim.people.date_pos_test[final_inf_idcs] = sim.t
+        sim.people.date_diagnosed[res_infected] = sim.t +test_delay
+        sim.people.date_pos_test[res_infected] = sim.t
 
         self.date_diagn_state[0, res_susc] = sim.t + test_delay
-        self.date_diagn_state[1, final_inf_idcs] = sim.t + test_delay
+        self.date_diagn_state[1, res_infected] = sim.t + test_delay
         self.date_diagn_state[2, res_recov] = sim.t + test_delay
 
         today_tests.loc[res_susc, "res_state"] = 0
-        today_tests.loc[final_inf_idcs, "res_state"] = 1
+        today_tests.loc[res_infected, "res_state"] = 1
         today_tests.loc[res_recov, "res_state"] = 2
         today_tests["date_res"] = sim.t + test_delay
 
