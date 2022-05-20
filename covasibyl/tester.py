@@ -4,6 +4,8 @@ import pandas as pd
 import covasim.utils as cvu
 import covasim.defaults as cvd
 
+import warnings
+
 from . import utils
 
 def write_tests_state(people, stats_df, inds_test):
@@ -77,12 +79,21 @@ class CovasimTester:
         
         pars = sim.pars
         self.N = pars["pop_size"]
+
+        self.rand_seed = int(sim["rand_seed"])
+
+        self.reinit()
+    
+    def reinit(self):
         self.date_diagn_state = np.full((3,self.N), np.nan)
         self.date_diagnosed = np.full(self.N, np.nan)
         self.diagnosed = np.zeros(self.N,dtype=bool)
-        self.date_posit_test = np.full_like(self.date_diagnosed, np.nan)
 
         self.all_tests = []
+
+        self.date_posit_test = np.full_like(self.date_diagnosed, np.nan)
+        self.randstate = np.random.RandomState(np.random.PCG64(self.rand_seed))
+        
     
     def _not_diagnosed(self):
         return np.isnan(self.date_diagnosed)
@@ -105,7 +116,8 @@ class CovasimTester:
         num_tests = len(inds)
         ## check that there are no diagnosed (eg positive-tested) people
         diagnosed = people.diagnosed[inds] | self.diagnosed[inds]
-        assert diagnosed.sum() == 0
+        if diagnosed.sum() > 0:
+            warnings.warn(f"at time {sim.t}: Asking to test people who have already been diagnosed")
 
         people.tested[inds] = True
         people.date_tested[inds] = sim.t # Only keep the last time they tested
@@ -134,7 +146,7 @@ class CovasimTester:
         ## exposed people remain exposed when infectious on covasim
         is_E = (people.exposed &(~people.infectious))
         susc_inds = cvu.itruei((people.susceptible | is_E), inds_test)
-        neg_test = random_all_p(test_specificity, len(susc_inds))
+        neg_test = random_all_p(test_specificity, len(susc_inds), rand=self.randstate)
         res_susc = susc_inds[neg_test]
         
         res_infected = susc_inds[np.logical_not(neg_test)] # false positive
@@ -145,7 +157,7 @@ class CovasimTester:
         #inf_or_exp = people.infectious[inds_test] | people.exposed[inds_test]
         is_I_idcs = cvu.itruei(people.infectious, inds_test) #return indices
         ## find the ones which test positive
-        pos_test      = random_all_p(test_sensitivity, len(is_I_idcs))
+        pos_test      = random_all_p(test_sensitivity, len(is_I_idcs), rand=self.randstate)
         is_inf_pos    = is_I_idcs[pos_test]
         
         ### concatenate results
@@ -155,7 +167,7 @@ class CovasimTester:
         # check for recovered
         ids_rec = cvu.itruei(people.recovered, inds_test)
         # Use specificity for recovered people -> they don't have the disease anymore
-        test_R = random_all_p(test_specificity, len(ids_rec))
+        test_R = random_all_p(test_specificity, len(ids_rec), rand=self.randstate)
         res_recov = np.concatenate((ids_rec[test_R], cvu.itruei(people.dead, inds_test))) #inds_test[rec_inds]
         res_infected = np.concatenate((res_infected, ids_rec[~test_R]))
 
