@@ -1,9 +1,39 @@
 import numpy as np
+import pandas as pd
 
 import covasim.utils as cvu
 import covasim.defaults as cvd
 
 from . import utils
+
+def write_tests_state(people, stats_df, inds_test):
+    """
+    Write the actual state of people to the statistic
+    """
+
+    is_E = (people.exposed &(~people.infectious))
+    stats_df.loc[cvu.itruei(is_E, inds_test), "t_state"] = "E"
+    stats_df.loc[cvu.itruei(people.susceptible, inds_test), "t_state"] = "S"
+    
+    #today_tests.loc[cvu.itruei(people.infectious, inds_test), "true_state"] = "S"
+
+    nonsympt = (people.infectious &(~people.symptomatic) )[inds_test]
+    asympt = nonsympt & np.isnan(people.date_symptomatic[inds_test])
+    presympt = nonsympt & np.logical_not(asympt)
+    stats_df.loc[inds_test[asympt], "t_state"] = "AS"
+    stats_df.loc[inds_test[presympt],"t_state"] = "PS"
+
+    symptomat = people.symptomatic[inds_test]
+    severe = people.severe[inds_test]
+    critical = people.critical[inds_test]
+    mild = symptomat & np.logical_not(severe | critical)
+    stats_df.loc[inds_test[mild], "t_state"] = "MS"
+    stats_df.loc[inds_test[critical], "t_state"] = "CS"
+    stats_df.loc[inds_test[severe], "t_state"] = "SS"
+
+    stats_df.loc[cvu.itruei(people.dead, inds_test), "t_state"] = "D"
+    stats_df.loc[cvu.itruei(people.recovered, inds_test), "t_state"] = "R"
+
 
 # TODO: make class to do tests, with delay
 
@@ -52,6 +82,8 @@ class CovasimTester:
         self.date_diagnosed = np.full(self.N, np.nan)
         self.diagnosed = np.zeros(self.N,dtype=bool)
         self.date_posit_test = np.full_like(self.date_diagnosed, np.nan)
+
+        self.all_tests = []
     
     def _not_diagnosed(self):
         return np.isnan(self.date_diagnosed)
@@ -81,14 +113,23 @@ class CovasimTester:
 
         
         
+        
         ## lost tests
         not_lost = utils.n_binomial(1.0-loss_prob, len(inds))
         inds_test = inds[not_lost]
         num_lost = np.logical_not(not_lost).sum()
+
+        today_tests = pd.DataFrame(inds, columns=["i"])
+        today_tests["date_req"] = sim.t
+        today_tests["t_state"] = "U"
+        today_tests["res_state"] = -2
+        today_tests.set_index("i", inplace=True)
         #if(num_lost > 1):
         #    print(f"Lost {num_lost} tests")
         ## exposed individuals remain exposed when infectious
         is_E = (people.exposed &(~people.infectious))
+
+        write_tests_state(people, today_tests, inds_test)
 
         ## check susceptibles
         susc_inds = cvu.itruei((people.susceptible | is_E), inds_test)
@@ -105,6 +146,8 @@ class CovasimTester:
         ## find the ones which test positive
         pos_test      = np.random.rand(len(is_I_idcs)) < test_sensitivity #random_all_p(test_sensitivity, len(is_I_idcs))
         is_inf_pos    = is_I_idcs[pos_test]
+
+        
         ### concatenate results
         res_susc = np.concatenate((res_susc, is_I_idcs[np.logical_not(pos_test)]))
         res_infected = np.concatenate((res_infected, is_inf_pos))
@@ -118,7 +161,7 @@ class CovasimTester:
         # check for recovered
         is_recov = people.recovered[inds_test] | people.dead[inds_test]
         rec_inds = cvu.true(is_recov)
-        # TODO: use specificity here?
+        # TODO: use specificity here? YES
         res_recov = inds_test[rec_inds]
         
         #assert len(res_recov) + len(res_infected) + len(res_susc) == num_tests
@@ -134,9 +177,16 @@ class CovasimTester:
         self.date_diagn_state[1, final_inf_idcs] = sim.t + test_delay
         self.date_diagn_state[2, res_recov] = sim.t + test_delay
 
+        today_tests.loc[res_susc, "res_state"] = 0
+        today_tests.loc[final_inf_idcs, "res_state"] = 1
+        today_tests.loc[res_recov, "res_state"] = 2
+        today_tests["date_res"] = sim.t + test_delay
+
         ## handle diagnosed
         diag_inds  = people.check_inds(self.diagnosed, self.date_diagnosed, filter_inds=None) # Find who was actually diagnosed on this timestep
         self.diagnosed[diag_inds] = True
+
+        self.all_tests.append(today_tests.to_records())
 
         return num_lost
 
