@@ -206,12 +206,13 @@ class RankTester(cvi.Intervention):
                 auc_inf = np.nan
 
             accu = true_inf_rk / min(len(test_inds), true_inf.sum())
-            print("day {}: AUC_I_rk: {:4.3f}, accu {:.2%}".format(
-                day,auc_inf,accu) ,
+            print("day {}: AUC_I_rk: {:4.3f}, n_I_rk: {}, accu {:.2%}".format(
+                day,auc_inf, true_inf_rk, accu) ,
                 end=" ")
             #print("", end=" ")
             day_stats["auc_I"] = auc_inf
             day_stats["accu_I"] = accu
+            day_stats["true_I_rk"] = true_inf_rk
 
             ### test actually
             test_indcs_all = np.concatenate((test_inds_rnd, test_inds))
@@ -220,6 +221,8 @@ class RankTester(cvi.Intervention):
                         test_sensitivity=self.sensitivity,
                         test_specificity=self.specificity,
                         loss_prob=self.loss_prob, test_delay=self.test_delay)
+
+            ## stats -> check among those that I have found from symptomatic testing
 
             ## find people who are tested today
             ## date_tested is the date in which the test has been required
