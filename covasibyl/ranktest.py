@@ -210,6 +210,8 @@ class RankTester(cvi.Intervention):
                 day,auc_inf,accu) ,
                 end=" ")
             #print("", end=" ")
+            day_stats["auc_I"] = auc_inf
+            day_stats["accu_I"] = accu
 
             ### test actually
             test_indcs_all = np.concatenate((test_inds_rnd, test_inds))
