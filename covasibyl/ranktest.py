@@ -139,6 +139,7 @@ class RankTester(cvi.Intervention):
 
         obs_day = self.daily_obs
         day_stats = dict(day=day)
+        day_stats["true_I_rk"] = 0
         N = len(sim.people.age)
 
         conts_m = utils.get_contacts_day(sim.people)
@@ -199,11 +200,9 @@ class RankTester(cvi.Intervention):
             ## accuracy
             true_inf = sim.people.infectious
             true_inf_rk = true_inf[test_inds].sum()
-            if true_inf_rk > 0:
-                fpr, tpr, _ = roc_curve(true_inf[test_inds], rank[test_inds].to_numpy())
-                auc_inf = auc(fpr,tpr)  #if real_inf > 0 else np.nan
-            else:
-                auc_inf = np.nan
+            fpr, tpr, _ = roc_curve(true_inf, rank.to_numpy())
+            auc_inf = auc(fpr,tpr)  #if real_inf > 0 else np.nan
+            
 
             accu = true_inf_rk / min(len(test_inds), true_inf.sum())
             print("day {}: AUC_I_rk: {:4.3f}, n_I_rk: {}, accu {:.2%}".format(
@@ -256,6 +255,7 @@ class RankTester(cvi.Intervention):
             ck = "test_"+k
             if ck not in day_stats:
                 day_stats[ck] = 0
+        
 
         self.hist.append(day_stats)
 
