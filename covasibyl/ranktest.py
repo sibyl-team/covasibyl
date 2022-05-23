@@ -37,7 +37,8 @@ class RankTester(cvi.Intervention):
                 quar_policy=None,
                 iso_cts_strength = 0.1,
                 logger=None,
-                debug=False
+                debug=False,
+                verbose=True,
                 ):
 
         super().__init__(label="Mitigation: "+label)
@@ -71,6 +72,7 @@ class RankTester(cvi.Intervention):
         self._tested_idx = None
         self.hist = []
         self.days_cts = None
+        self.verbose = verbose
 
     def _init_for_sim(self, sim):
         """
@@ -176,6 +178,7 @@ class RankTester(cvi.Intervention):
 
             ## remove already diagnosed
             already_diagnosed = sim.people.diagnosed #| np.logical_not(np.isnan(self.tester.date_diagnosed))
+            true_inf = sim.people.infectious
             idx_diagnosed = cvu.true(already_diagnosed)
             test_probs[idx_diagnosed] = 0.
             
@@ -189,6 +192,9 @@ class RankTester(cvi.Intervention):
             ### Ranker tests
             rank_df = pd.DataFrame(rank_algo, columns=["idx","rank"]).set_index("idx")
             rank = rank_df["rank"].sort_index()
+            ### compute AUC immediately
+            fpr, tpr, _ = roc_curve(true_inf, rank.to_numpy())
+            auc_inf = auc(fpr,tpr)  #if real_inf > 0 else np.nan
             # add rand tests indices to exclude testing
             test_probs[test_inds_rnd] = 0.
             ## get from rank
@@ -198,14 +204,14 @@ class RankTester(cvi.Intervention):
                 warnings.warn("No tests from ranker, test_probs: {}".format(sum(test_probs>0)))
             test_inds = rank_good[:self.n_tests_algo_day].index.to_numpy()
             ## accuracy
-            true_inf = sim.people.infectious
+            
             true_inf_rk = true_inf[test_inds].sum()
-            fpr, tpr, _ = roc_curve(true_inf, rank.to_numpy())
-            auc_inf = auc(fpr,tpr)  #if real_inf > 0 else np.nan
+           
             
 
             accu = true_inf_rk / min(len(test_inds), true_inf.sum())
-            print("day {}: AUC_I_rk: {:4.3f}, n_I_rk: {}, accu {:.2%}".format(
+            if self.verbose:
+                print("day {}: AUC_I_rk: {:4.3f}, n_I_rk: {}, accu {:.2%}".format(
                 day,auc_inf, true_inf_rk, accu) ,
                 end=" ")
             #print("", end=" ")
@@ -233,13 +239,14 @@ class RankTester(cvi.Intervention):
             stats = np.zeros(3,dtype=int)
             stats[stats_tests[0]] = stats_tests[1]
             #assert stats_tests[1].sum() == self.n_tests_algo_day + self.n_tests_symp
-            print("res: ", stats, f" I: {sim.people.infectious.sum()}", end=" " )
+            if self.verbose: 
+                print("res: ", stats, f" I: {sim.people.infectious.sum()}", end=" " )
             for s,k in enumerate(["S","I","R"]):
                 day_stats["test_"+k] = stats[s]
 
         free_birds = len(utils.check_free_birds(sim.people))
         inf_quar = (sim.people.infectious & sim.people.quarantined).sum()
-        if ACTIVE:
+        if ACTIVE and self.verbose:
             print("free {:d}".format(free_birds))
         diagnosed_today = (sim.people.date_diagnosed == sim.t) | (self.tester.date_diagnosed == sim.t)
 
