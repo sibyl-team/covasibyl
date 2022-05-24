@@ -1,4 +1,5 @@
 import sys
+import time
 import numpy as np
 import pandas as pd
 from .template_rank import AbstractRanker
@@ -20,7 +21,7 @@ class GreedyRanker(AbstractRanker):
         self.rng = np.random.RandomState(1)
 
     def init(self, N, T):
-        self.contacts = []
+        self.contacts = None
         #dummy obs, needed if the first time you add only one element
         self.obs = [(0,-1,0)] 
         self.T = T
@@ -28,6 +29,34 @@ class GreedyRanker(AbstractRanker):
         self.rank_not_zero = np.zeros(T)
 
         return True
+
+    def _save_contacts(self, daily_contacts):
+        #for (i,j,t,l) in daily_contacts:
+        #    self.contacts.append([i,j,t,l])
+        if isinstance(daily_contacts, np.recarray):
+            daily_contacts.dtype.names = "i", "j", "t", "lambda"
+            cts_d = pd.DataFrame(daily_contacts)
+        else:
+            cts_d = pd.DataFrame(np.array(daily_contacts), columns=["i", "j", "t", "lambda"])
+
+        if len(daily_contacts) > 0:
+            assert len(cts_d) == len(daily_contacts)
+        if self.contacts is None:
+            self.contacts = cts_d
+        else:
+            self.contacts = pd.concat((self.contacts, cts_d), ignore_index=True)
+    
+    def _clear_old_contacts(self, t_day):
+        if self.contacts is not None:
+            mday = (self.contacts["t"] >= t_day - self.tau)
+            self.contacts = self.contacts[mday]
+
+        """while len(self.contacts) > 0:
+            if self.contacts[0][2] < t_day - self.tau:
+                self.contacts.pop()
+            else:
+                break
+        """
 
     def rank(self, t_day, daily_contacts, daily_obs, data):
         '''
@@ -38,17 +67,15 @@ class GreedyRanker(AbstractRanker):
         for obs in daily_obs:
             self.obs.append(obs)
 
-        while len(self.contacts) > 0:
-            if self.contacts[0][2] < t_day - self.tau:
-                self.contacts.pop()
-            else:
-                break
-
-        for (i,j,t,l) in daily_contacts:
-            self.contacts.append([i,j,t,l])
+        self._clear_old_contacts(t_day)
+        t0=time.time()
+        self._save_contacts(daily_contacts)
+        tc=time.time()-t0
+        
+        print(f"t_savec: {tc:6.5f} s", end=" ")
 
         obs_df = pd.DataFrame(self.obs, columns=["i", "s", "t_test"])
-        contacts_df = pd.DataFrame(self.contacts, columns=["i", "j", "t", "lambda"])
+        contacts_df = self.contacts #pd.DataFrame(self.contacts, columns=["i", "j", "t", "lambda"])
 
         if not self.include_S:
             obs_df = obs_df[obs_df.s != 0] # just infected
@@ -65,8 +92,9 @@ class GreedyRanker(AbstractRanker):
 
 
 
-def run_greedy(self, observ, T, contacts, N, noise = 1e-3, tau = TAU_INF, verbose=True):
+def run_greedy(self, observ, T:int, contacts, N, noise = 1e-3, tau = TAU_INF, verbose=True):
 
+    t0 = time.time()
     observ = observ[(observ["t_test"] <= T)]
     contacts = contacts[(contacts["t"] <= T) & (contacts["t"] >= T-tau)]
 
@@ -77,7 +105,7 @@ def run_greedy(self, observ, T, contacts, N, noise = 1e-3, tau = TAU_INF, verbos
     #idx_I_at_T = observ[(observ['s'] == 1) & (observ['t_test'] == T)].to_numpy()
     #idx_I_assumed = np.setdiff1d(idx_I, idx_I_at_T)
 
-    idx_S_anyT = observ[(observ['s'] == 0) & (observ['t_test'] < T)]['i'] # observed S at time < T
+    #idx_S_anyT = observ[(observ['s'] == 0) & (observ['t_test'] < T)]['i'] # observed S at time < T
     idx_S = observ[(observ['s'] == 0) & (observ['t_test'] == T)]['i'].to_numpy() # observed S at T -> put them at the tail of the ranking
 
     idx_alli = contacts['i'].unique()
@@ -90,6 +118,10 @@ def run_greedy(self, observ, T, contacts, N, noise = 1e-3, tau = TAU_INF, verbos
     idx_to_inf = np.setdiff1d(idx_to_inf, idx_S) # nor S at time T
     idx_to_inf = np.setdiff1d(idx_to_inf, idx_R) # nor R anytime
 
+    idcs_t = time.time()-t0
+    print(f"tinds: {idcs_t:3.2e} s " ,end="")
+    t0=time.time()
+
 
     maxS = -1 * np.ones(N)
     minR = T * np.ones(N)
@@ -101,17 +133,20 @@ def run_greedy(self, observ, T, contacts, N, noise = 1e-3, tau = TAU_INF, verbos
         # I can consider a contact as potentially contagious if T > minR > t_contact > maxS,
         # the maximum time at which I am observed as S (for both infector and
         # infected)
-
+    tloop = time.time()-t0
+    #print(f"tloop: {tloop:3.2e} s")
     if verbose:
         print("! Assuming contacts as direct links !", file=sys.stderr)
         print("! Assuming that if i is infected at t < T (and not observed as R), it is still infected at T !", file=sys.stderr)
 
     Score = dict([(i, 0) for i in range(N)])
     print(f"all contacts: {len(contacts)}")
+    t1 = time.time()
     contacts_cut = contacts[(contacts["i"].isin(idx_to_inf)) \
                            & (contacts["j"].isin(idx_I))]
-    print(f"all contacts cut: {len(contacts_cut)}")
-    
+    tcut = time.time() -t1
+    print(f"all contacts cut: {len(contacts_cut)}, taken: {tcut:4.2f}")
+    t0 = time.time()
     for i, j, t in contacts_cut[["i", "j", "t"]].to_numpy():
         if t > max(maxS[i], maxS[j]):
             if t < minR[j]:
@@ -130,6 +165,8 @@ def run_greedy(self, observ, T, contacts, N, noise = 1e-3, tau = TAU_INF, verbos
         elif i in idx_R: #anytime
             Score[i] = -1 + self.rng.rand() * noise
     sorted_Score = list(sorted(Score.items(),key=lambda item: item[1], reverse=True))
+    tscore = time.time() - t0
+    print(f"t_score: {tscore:5.3f}")
     return sorted_Score
 
 
