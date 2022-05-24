@@ -31,16 +31,18 @@ class GreedyRanker(AbstractRanker):
         return True
 
     def _save_contacts(self, daily_contacts):
-        #for (i,j,t,l) in daily_contacts:
-        #    self.contacts.append([i,j,t,l])
+        """
+        Save contacts in a pandas dataframe
+        This is slower than numpy but easier to handle
+        """
         if isinstance(daily_contacts, np.recarray):
             daily_contacts.dtype.names = "i", "j", "t", "lambda"
             cts_d = pd.DataFrame(daily_contacts)
         else:
             cts_d = pd.DataFrame(np.array(daily_contacts), columns=["i", "j", "t", "lambda"])
 
-        if len(daily_contacts) > 0:
-            assert len(cts_d) == len(daily_contacts)
+        assert len(cts_d) == len(daily_contacts)
+        print(f"{len(cts_d)} new contacts,", end=" ")
         if self.contacts is None:
             self.contacts = cts_d
         else:
@@ -72,7 +74,7 @@ class GreedyRanker(AbstractRanker):
         self._save_contacts(daily_contacts)
         tc=time.time()-t0
         
-        print(f"t_savec: {tc:6.5f} s", end=" ")
+        #print(f"t_savec: {tc:6.5f} s", end=" ")
 
         obs_df = pd.DataFrame(self.obs, columns=["i", "s", "t_test"])
         contacts_df = self.contacts #pd.DataFrame(self.contacts, columns=["i", "j", "t", "lambda"])
@@ -84,7 +86,7 @@ class GreedyRanker(AbstractRanker):
         else:
             rank_greedy = run_greedy(self, obs_df, t_day, contacts_df, self.N, tau = self.tau, verbose=False) 
         dict_greedy = dict(rank_greedy)
-        self.rank_not_zero[t_day] =  sum([1 for x in rank_greedy if x[1] > 0])
+        self.rank_not_zero[t_day] =  sum(1 for x in rank_greedy if x[1] > 0)
         data["rank_not_zero"] = self.rank_not_zero
         rank = list(sorted(rank_greedy, key=lambda tup: tup[1], reverse=True))
 
@@ -119,7 +121,7 @@ def run_greedy(self, observ, T:int, contacts, N, noise = 1e-3, tau = TAU_INF, ve
     idx_to_inf = np.setdiff1d(idx_to_inf, idx_R) # nor R anytime
 
     idcs_t = time.time()-t0
-    print(f"tinds: {idcs_t:3.2e} s " ,end="")
+    #print(f"tinds: {idcs_t:3.2e} s " ,end="")
     t0=time.time()
 
 
@@ -166,7 +168,7 @@ def run_greedy(self, observ, T:int, contacts, N, noise = 1e-3, tau = TAU_INF, ve
             Score[i] = -1 + self.rng.rand() * noise
     sorted_Score = list(sorted(Score.items(),key=lambda item: item[1], reverse=True))
     tscore = time.time() - t0
-    print(f"t_score: {tscore:5.3f}")
+    #print(f"t_score: {tscore:5.3f}")
     return sorted_Score
 
 
