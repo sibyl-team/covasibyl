@@ -216,7 +216,7 @@ class Mitigation(cvi.Intervention):
 
             test_inds = np.concatenate((test_inds,inds_symps))
             assert len(np.unique(test_inds)) == self.n_tests_algo_day + self.n_tests_symp        
-            self.tester.apply_tests(sim, test_inds,
+            self.tester.run_tests(sim, test_inds,
                         test_sensitivity=self.sensitivity,
                         test_specificity=self.specificity,
                         loss_prob=self.loss_prob, test_delay=self.test_delay)

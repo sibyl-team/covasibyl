@@ -40,6 +40,7 @@ class RankTester(cvi.Intervention):
                 logger=None,
                 debug=False,
                 verbose=True,
+                mitigate=True,
                 **kwargs
                 ):
 
@@ -79,6 +80,7 @@ class RankTester(cvi.Intervention):
             self._obs_source = True
         else:
             self._obs_source=False
+        self.mitigate = mitigate
 
     def _init_for_sim(self, sim):
         """
@@ -90,7 +92,7 @@ class RankTester(cvi.Intervention):
         T = pars["n_days"] +1
         self.ranker.init(self.N, T)
 
-        self.tester = CovasimTester(sim)
+        self.tester = CovasimTester(sim, contain=self.mitigate)
 
     def to_json(self):
         '''
@@ -228,7 +230,7 @@ class RankTester(cvi.Intervention):
             ### test actually
             test_indcs_all = np.concatenate((test_inds_rnd, test_inds))
             assert len(np.unique(test_indcs_all)) == self.n_tests_algo_day + self.n_tests_rand        
-            self.tester.apply_tests(sim, test_indcs_all,
+            self.tester.run_tests(sim, test_indcs_all,
                         test_sensitivity=self.sensitivity,
                         test_specificity=self.specificity,
                         loss_prob=self.loss_prob, test_delay=self.test_delay)

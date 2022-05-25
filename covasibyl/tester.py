@@ -77,7 +77,13 @@ def get_default_test_p_sym(sim, t, symp_test, test_pdf, test_probs=None):
 
 class CovasimTester:
 
-    def __init__(self, sim, seed=None):
+    def __init__(self, sim, seed=None, contain=True):
+        """
+        A tester for covasim that saves the actual result of tests,
+        not just the positive ones.
+
+        contain: if True, actually diagnose individuals so they are isolated
+        """
         
         pars = sim.pars
         self.N = pars["pop_size"]
@@ -85,6 +91,8 @@ class CovasimTester:
         self.rand_seed = int(sim["rand_seed"])
 
         self.reinit()
+        
+        self.give_diagnosis = contain
     
     def reinit(self):
         #self.date_diagn_state = np.full((3,self.N), np.nan)
@@ -97,12 +105,14 @@ class CovasimTester:
         self.randstate = np.random.RandomState(np.random.PCG64(self.rand_seed))
 
         self.test_results=defaultdict(list)
+
+        self._warned = defaultdict(lambda: False)
         
     
     def _not_diagnosed(self):
         return np.isnan(self.date_diagnosed)
 
-    def apply_tests(self, sim, inds, test_sensitivity=1.0, test_specificity=1.0, loss_prob=0.0, test_delay=0):
+    def run_tests(self, sim, inds, test_sensitivity=1.0, test_specificity=1.0, loss_prob=0.0, test_delay=0):
         '''
         Method to test people, accounting for recovered 
         and susceptible individuals (SIR model)
@@ -176,13 +186,18 @@ class CovasimTester:
         res_infected = np.concatenate((res_infected, ids_rec[~test_R]))
 
         #assert len(res_recov) + len(res_infected) + len(res_susc) == num_tests
-        ## Keep this for compatibility
-        # Store the date the person will be diagnosed, as well as the date they took the test which will come back positive
-        self.date_diagnosed[res_infected] = sim.t + test_delay
-        self.date_posit_test[res_infected] = sim.t
-        ## COPY ON COVASIM: important!! -> diagnosed individuals are isolated
-        sim.people.date_diagnosed[res_infected] = sim.t +test_delay
-        sim.people.date_pos_test[res_infected] = sim.t
+        if self.give_diagnosis:
+            ## Keep this for compatibility
+            # Store the date the person will be diagnosed, as well as the date they took the test which will come back positive
+            self.date_diagnosed[res_infected] = sim.t + test_delay
+            self.date_posit_test[res_infected] = sim.t
+            ## COPY ON COVASIM: important!! -> diagnosed individuals are isolated
+            sim.people.date_diagnosed[res_infected] = sim.t +test_delay
+            sim.people.date_pos_test[res_infected] = sim.t
+        else:
+            if not self._warned["contain"]:
+                warnings.warn("Not containing the tested individuals")
+                self._warned["contain"] = True
 
         day_res =  sim.t + test_delay
         if day_res not in self.test_results:
