@@ -1,4 +1,5 @@
 from cmath import log
+from tabnanny import verbose
 import warnings
 import numpy as np
 import pandas as pd
@@ -39,6 +40,7 @@ class RankTester(cvi.Intervention):
                 logger=None,
                 debug=False,
                 verbose=True,
+                **kwargs
                 ):
 
         super().__init__(label="Mitigation: "+label)
@@ -73,6 +75,10 @@ class RankTester(cvi.Intervention):
         self.hist = []
         self.days_cts = None
         self.verbose = verbose
+        if "observe_src" in kwargs and kwargs["observe_src"]:
+            self._obs_source = True
+        else:
+            self._obs_source=False
 
     def _init_for_sim(self, sim):
         """
@@ -135,9 +141,9 @@ class RankTester(cvi.Intervention):
             self.delayed_init = False
 
         ACTIVE = (day >= self.start_day)
-        if not ACTIVE:
+        """if not ACTIVE:
             ## observations from the previous day
-            self.daily_obs = []
+            self.daily_obs = []"""
 
         obs_day = self.daily_obs
         day_stats = dict(day=day)
@@ -229,12 +235,17 @@ class RankTester(cvi.Intervention):
 
             ## stats -> check among those that I have found from symptomatic testing
 
-            ## find people who are tested today
-            ## date_tested is the date in which the test has been required
-            results_day = self.tester.get_results(day)
-            ## set obs for the next day
-            self.daily_obs = results_day # (idx, st, day)
+        if self._obs_source:
+            if self.tester._observe_sources(sim):
+                self._obs_source = False
 
+        ## find people who are tested today
+        ## date_tested is the date in which the test has been required
+        results_day = self.tester.get_results(day)
+        ## set obs for the next day
+        self.daily_obs = results_day # (idx, st, day)
+        ##
+        if len(results_day) > 0:
             stats_tests = np.unique(results_day[:,1], return_counts=True)
             stats = np.zeros(3,dtype=int)
             stats[stats_tests[0]] = stats_tests[1]
@@ -243,6 +254,10 @@ class RankTester(cvi.Intervention):
                 print("res: ", stats, f" I: {sim.people.infectious.sum()}", end=" " )
             for s,k in enumerate(["S","I","R"]):
                 day_stats["test_"+k] = stats[s]
+        #elif self.verbose:
+        #    print(f"no obs, t {sim.t}")
+        if not ACTIVE:
+            print(f"day {sim.t}")
 
         free_birds = len(utils.check_free_birds(sim.people))
         inf_quar = (sim.people.infectious & sim.people.quarantined).sum()

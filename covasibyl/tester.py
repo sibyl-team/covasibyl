@@ -8,6 +8,8 @@ import warnings
 
 from . import utils
 
+from collections import defaultdict
+
 def write_tests_state(people, stats_df, inds_test):
     """
     Write the actual state of people to the statistic
@@ -94,7 +96,7 @@ class CovasimTester:
         self.date_posit_test = np.full_like(self.date_diagnosed, np.nan)
         self.randstate = np.random.RandomState(np.random.PCG64(self.rand_seed))
 
-        self.test_results={}
+        self.test_results=defaultdict(list)
         
     
     def _not_diagnosed(self):
@@ -210,3 +212,21 @@ class CovasimTester:
 
         return np.array(self.test_results[day])
         #np.stack(np.where(self.date_diagn_state == day),1)[:,::-1]
+
+    def _observe_sources(self, sim):
+
+        people = sim.people
+        issrc = people.date_exposed == 0
+        warnings.warn("Asked to observe the sources, ONLY RUN FOR DEVELOPMENT PURPOSE")
+        
+        if sum(issrc) == 0:
+            print(f"No src found at time {sim.t}")
+            return False
+        
+        idcs_src = cvu.true(issrc)
+        #date_inf = people.date_infectious[idcs_src].astype(int)
+        date_inf = [0]*len(idcs_src)
+        for t, idc in zip(date_inf, idcs_src):
+            self.test_results[t].append((idc, 1, t))
+
+        return True
