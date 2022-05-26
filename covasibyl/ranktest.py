@@ -1,4 +1,5 @@
 from cmath import log
+from collections import defaultdict
 from tabnanny import verbose
 import warnings
 import numpy as np
@@ -81,6 +82,9 @@ class RankTester(cvi.Intervention):
         else:
             self._obs_source=False
         self.mitigate = mitigate
+        self._check_epi_tests = kwargs["check_epi_tests"] if "check_epi_tests" in kwargs else False
+
+        self._warned = defaultdict(lambda: False)
 
     def _init_for_sim(self, sim):
         """
@@ -93,6 +97,8 @@ class RankTester(cvi.Intervention):
         self.ranker.init(self.N, T)
 
         self.tester = CovasimTester(sim, contain=self.mitigate)
+        self._warned = defaultdict(lambda: False)
+
 
     def to_json(self):
         '''
@@ -173,6 +179,15 @@ class RankTester(cvi.Intervention):
         else:
             warnings.warn("Epidemy ended, returning random ranking")
             rank_algo = list(zip(np.arange(N),np.random.rand(N)))
+        if self._check_epi_tests and (day >= self.start_day):
+            ### random test
+            if not self._warned["check_epi"]:
+                warnings.warn("Doing only random tests WITHOUT ANY INFORMATION FROM RANKER")
+                self._warned["check_epi"] = True
+            ### Disable normal intervention
+            ACTIVE = False
+            self.tester._do_random_tests(sim, n_tests=(self.n_tests_algo_day+self.n_tests_rand))
+        
 
         if ACTIVE:
             test_probs = np.ones(N)
@@ -195,7 +210,8 @@ class RankTester(cvi.Intervention):
                 ### This shouldn't happen, but let's check
                 warnings.warn("Number of tests higher than probability sum")
             n_tests_rnd = min(self.n_tests_rand, (test_probs!=0).sum())# Don't try to test more people than have nonzero testing probability
-            test_inds_rnd = utils.choose_w_rng(probs=test_probs, n=n_tests_rnd, unique=True) # Choose who actually tests
+            test_inds_rnd = utils.choose_w_rng(probs=test_probs, n=n_tests_rnd, unique=True, 
+                rng=self.tester.randstate) # Choose who actually tests
 
             ### Ranker tests
             rank_df = pd.DataFrame(rank_algo, columns=["idx","rank"]).set_index("idx")
@@ -256,10 +272,12 @@ class RankTester(cvi.Intervention):
                 print("res: ", stats, f" I: {sim.people.infectious.sum()}", end=" " )
             for s,k in enumerate(["S","I","R"]):
                 day_stats["test_"+k] = stats[s]
+            
+            if not ACTIVE:
+                print(f"day {sim.t}")
         #elif self.verbose:
         #    print(f"no obs, t {sim.t}")
-        if not ACTIVE:
-            print(f"day {sim.t}")
+        
 
         free_birds = len(utils.check_free_birds(sim.people))
         inf_quar = (sim.people.infectious & sim.people.quarantined).sum()

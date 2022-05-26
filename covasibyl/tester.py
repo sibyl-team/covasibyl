@@ -89,10 +89,11 @@ class CovasimTester:
         self.N = pars["pop_size"]
 
         self.rand_seed = int(sim["rand_seed"])
+                
+        self.give_diagnosis = contain
 
         self.reinit()
-        
-        self.give_diagnosis = contain
+
     
     def reinit(self):
         #self.date_diagn_state = np.full((3,self.N), np.nan)
@@ -107,6 +108,10 @@ class CovasimTester:
         self.test_results=defaultdict(list)
 
         self._warned = defaultdict(lambda: False)
+
+        if not self.give_diagnosis:
+            warnings.warn("WARNING: Not containing the tested individuals")
+
         
     
     def _not_diagnosed(self):
@@ -194,10 +199,6 @@ class CovasimTester:
             ## COPY ON COVASIM: important!! -> diagnosed individuals are isolated
             sim.people.date_diagnosed[res_infected] = sim.t +test_delay
             sim.people.date_pos_test[res_infected] = sim.t
-        else:
-            if not self._warned["contain"]:
-                warnings.warn("Not containing the tested individuals")
-                self._warned["contain"] = True
 
         day_res =  sim.t + test_delay
         if day_res not in self.test_results:
@@ -245,3 +246,30 @@ class CovasimTester:
             self.test_results[t].append((idc, 1, t))
 
         return True
+
+    def _do_random_tests(self,sim, n_tests):
+        if not self._warned["rand_tests"]:
+            warnings.warn("Doing random tests!!! ONLY USE FOR DEVELOPMENT PURPOSE")
+            self._warned["rand_tests"] = True
+        
+        today = sim.t
+        people = sim.people
+        probs = np.ones(len(people.age))
+        probs /= probs.sum()
+
+        inds_test = utils.choose_w_rng(probs=probs, n=n_tests, unique=True, 
+                rng=self.randstate)
+
+        is_E = (people.exposed &(~people.infectious))
+        susc_inds = cvu.itruei(people.susceptible, inds_test)
+
+        is_I_idcs = cvu.itruei(people.infectious | is_E, inds_test)
+
+        ids_rec = cvu.itruei((people.recovered| people.dead), inds_test)
+
+        res_tests_t = self.test_results[today]
+
+        res_tests_t.extend((i, 0, today) for i in susc_inds)
+        res_tests_t.extend((i, 1, today) for i in is_I_idcs)
+        res_tests_t.extend((i, 2, today) for i in ids_rec)
+
