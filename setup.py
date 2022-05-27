@@ -1,10 +1,10 @@
 
 from setuptools import setup, find_packages
 
-version = 0.1
+version = 0.2
 
 setup(
-    name="SibylCovasim",
+    name="covasibyl",
     version=version,
     author="Fabio Mazza and the Sibyl Team",
     description="Interventions for the Covasim model",
