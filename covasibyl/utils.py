@@ -19,13 +19,14 @@ def remove_invalid_cts(p1, p2, beta):
 def get_contacts_day(people):
     N = len(people.sex)
     c = 0
-    for n,lay in people.contacts.items():
-        #print(n,lay)
+    for n,lay in people.contacts.items():  
         w = people.pars["beta_layer"][n]
         u = remove_invalid_cts(**lay)
+        #print(f" {n}-> {w}", end=" ")
         mat = sp.csr_matrix((u[2]*w,(u[0],u[1])), shape=(N,N))
         c += mat
     cend = c.tocoo()
+    #print("")
     return pd.DataFrame(dict(zip(["i","j","m"],(cend.row, cend.col, cend.data))) )
 
 def _cts_mat_to_df(c, idcs=["i","j","m"]):
