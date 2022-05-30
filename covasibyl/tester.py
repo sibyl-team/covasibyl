@@ -164,7 +164,7 @@ class CovasimTester:
         # exposed people test as susceptible
         ## exposed people remain exposed when infectious on covasim
         is_E = (people.exposed &(~people.infectious))
-        susc_inds = cvu.itruei((people.susceptible | is_E), inds_test)
+        susc_inds = cvu.itruei((people.susceptible), inds_test)
         neg_test = random_all_p(test_specificity, len(susc_inds), rand=self.randstate)
         res_susc = susc_inds[neg_test]
         
@@ -174,7 +174,7 @@ class CovasimTester:
 
         ### find infectious indices
         #inf_or_exp = people.infectious[inds_test] | people.exposed[inds_test]
-        is_I_idcs = cvu.itruei(people.infectious, inds_test) #return indices
+        is_I_idcs = cvu.itruei(people.infectious | is_E, inds_test) #return indices
         ## find the ones which test positive
         pos_test      = random_all_p(test_sensitivity, len(is_I_idcs), rand=self.randstate)
         is_inf_pos    = is_I_idcs[pos_test]
