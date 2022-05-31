@@ -14,6 +14,8 @@ class store_seir(Analyzer):
         self.E = []
         self.I = []
         self.R = []
+        self.Q = []
+        self.ND = []
         return
 
     def apply(self, sim):
@@ -23,9 +25,11 @@ class store_seir(Analyzer):
         self.E.append(ppl.exposed.sum() - ppl.infectious.sum())
         self.I.append(ppl.infectious.sum())
         self.R.append(ppl.recovered.sum() + ppl.dead.sum())
+        self.Q.append(ppl.quarantined.sum())
+        self.ND.append((ppl.infectious & (~ppl.diagnosed)).sum())        
         return
 
-    def plot(self):
+    def plot(self, **args):
         pl.figure()
         pl.plot(self.t, self.S, label='S')
         pl.plot(self.t, self.E, label='E')
@@ -40,5 +44,5 @@ class store_seir(Analyzer):
 
     def out_save(self):
         
-        return np.array([(t,s,i,e,r) for t,s,e,i,r in zip(self.t, self.S, self.E, self.I, self.R)],
-            dtype=[(i,np.int_) for i in ["t","S","E","I","R"]])
+        return np.array(list(zip(self.t, self.S, self.E, self.I, self.R, self.Q, self.ND)),
+            dtype=[(i,np.int_) for i in ["t","S","E","I","R", "Q", "nondiag"]])

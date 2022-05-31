@@ -48,7 +48,7 @@ def filt_contacts_df(cts, idcs, multipl, N):
 
 
 def check_free_birds(people):
-    free_idx = (people.infectious & np.logical_not(people.quarantined | people.diagnosed) ).nonzero()[0]
+    free_idx = (people.infectious & np.logical_not(people.diagnosed) ).nonzero()[0]
     return free_idx
 
 def choose_w_rng(probs, n, unique=True, rng=None): # No performance gain from Numba

@@ -12,7 +12,7 @@ import pandas as pd
 
 
 def check_free_birds(people):
-    free_idx = (people.infectious & np.logical_not(people.quarantined)).nonzero()[0]
+    free_idx = (people.infectious & np.logical_not(people.quarantined) & ~people.diagnosed).nonzero()[0]
     return free_idx
 
 class Mitigation(cvi.Intervention):
