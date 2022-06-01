@@ -155,7 +155,8 @@ class RankTester(cvi.Intervention):
 
         obs_day = self.daily_obs
         day_stats = dict(day=day)
-        day_stats["true_I_rk"] = 0
+        day_stats["n_I_rk"] = 0
+        day_stats["n_I_rnd"] = 0
         N = len(sim.people.age)
 
         conts_m = utils.get_contacts_day(sim.people)
@@ -231,17 +232,18 @@ class RankTester(cvi.Intervention):
             
             true_inf_rk = true_inf[test_inds].sum()
            
-            
+            ni_rand = sim.people.infectious[test_inds_rnd].sum()
 
             accu = true_inf_rk / min(len(test_inds), true_inf.sum())
             if self.verbose:
-                print("day {}: AUC_I_rk: {:4.3f}, n_I_rk: {}, accu {:.2%}".format(
-                day,auc_inf, true_inf_rk, accu) ,
+                print("day {}: AUC_I_rk: {:4.3f}, n_I_rk: {}, nI_rand: {} accu {:.2%}".format(
+                day,auc_inf, true_inf_rk, ni_rand, accu) ,
                 end=" ")
             #print("", end=" ")
             day_stats["auc_I"] = auc_inf
             day_stats["accu_I"] = accu
-            day_stats["true_I_rk"] = true_inf_rk
+            day_stats["n_I_rk"] = true_inf_rk
+            day_stats["n_I_rnd"] = ni_rand
 
             ### test actually
             test_indcs_all = np.concatenate((test_inds_rnd, test_inds))
