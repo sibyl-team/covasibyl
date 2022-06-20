@@ -8,6 +8,7 @@ import covasim.utils as cvu
 from covasim.interventions import (Intervention, preprocess_day, process_daily_data, get_day,
                 get_quar_inds)
 
+from .tester import CovasimTester
 
 class TestProbNum(Intervention):
     '''
@@ -44,7 +45,7 @@ class TestProbNum(Intervention):
 
     def __init__(self, daily_tests, symp_test_p=0.5, quar_test=100.0, quar_policy=None, subtarget=None,
                  ili_prev=None, sensitivity=1.0, loss_prob=0, test_delay=0,
-                 start_day=0, end_day=None, swab_delay=None, **kwargs):
+                 start_day=0, end_day=None, swab_delay=None, exp_test_inf=False, **kwargs):
         super().__init__(**kwargs) # Initialize the Intervention object
         self.daily_tests = daily_tests # Should be a list of length matching time
         self.symp_test_p   = symp_test_p   # Set probability of testing symptomatics
@@ -58,7 +59,8 @@ class TestProbNum(Intervention):
         self.start_day   = start_day
         self.end_day     = end_day
         self.pdf         = cvu.get_pdf(**sc.mergedicts(swab_delay)) # If provided, get the distribution's pdf -- this returns an empty dict if None is supplied
-        return
+        
+        self.custom_tester = exp_test_inf
 
 
     def initialize(self, sim):
@@ -74,6 +76,11 @@ class TestProbNum(Intervention):
         # Process daily data
         self.daily_tests = process_daily_data(self.daily_tests, sim, self.start_day)
         self.ili_prev    = process_daily_data(self.ili_prev,    sim, self.start_day)
+
+        if self.custom_tester:
+            self.custom_tester = CovasimTester(sim, contain=True)
+        else:
+            self.custom_tester = None
 
         return
 
@@ -140,6 +147,7 @@ class TestProbNum(Intervention):
         test_probs[ili_inds]        = self.symp_test_p
 
         test_probs[diag_inds] = 0.0 # People who are diagnosed don't test
+        #print(f"Symp probs: {symp_prob}, nposstest={(test_probs > 0).sum()}")
 
         test_inds_sym = cvu.true(cvu.binomial_arr(test_probs))
         if len(test_inds_sym) > n_tests_all:
@@ -148,7 +156,9 @@ class TestProbNum(Intervention):
 
         
         ntests_rand = n_tests_all - len(test_inds_sym)
-        ntrue_I = len(cvu.itruei(sim.people.infectious, test_inds_sym))
+        ntrue_I = len(cvu.itruei(sim.people.symptomatic, test_inds_sym))
+        inf_diag = (sim.people.symptomatic & sim.people.diagnosed)
+        #print(f"day {sim.t}, test inf: {ntrue_I} tot inf free: {sim.people.symptomatic.sum() - inf_diag.sum()}")
         test_inds = test_inds_sym
 
         if ntests_rand > 0:
@@ -158,6 +168,9 @@ class TestProbNum(Intervention):
             # Handle quarantine testing
             quar_test_inds = get_quar_inds(self.quar_policy, sim)
             test_probs_rnd[quar_test_inds] *= self.quar_test
+
+            test_probs_rnd[symp_inds]       = (symp_prob/self.symp_test_p)*80*(self.quar_test/144)          # People with symptoms (true positive)
+            test_probs_rnd[ili_inds]        = 80*(self.quar_test/144)
             # Don't rediagnose people
             test_probs_rnd[diag_inds] = 0.
             test_probs_rnd[test_inds_sym] = 0.
@@ -172,7 +185,11 @@ class TestProbNum(Intervention):
         
 
         # Now choose who gets tested and test them
-        
-        sim.people.test(test_inds, test_sensitivity=self.sensitivity, loss_prob=self.loss_prob, test_delay=self.test_delay)
+        if self.custom_tester:
+            self.custom_tester.run_tests(sim, test_inds, test_sensitivity=self.sensitivity,
+                test_specificity=1, loss_prob=self.loss_prob, test_delay=self.test_delay)
+
+        else:
+            sim.people.test(test_inds, test_sensitivity=self.sensitivity, loss_prob=self.loss_prob, test_delay=self.test_delay)
 
         return test_inds
