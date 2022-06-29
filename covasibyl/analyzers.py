@@ -7,7 +7,7 @@ from covasim.analysis import Analyzer
 
 class store_seir(Analyzer):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, printout=False, *args, **kwargs):
         super().__init__(*args, **kwargs) # This is necessary to initialize the class properly
         self.t = []
         self.S = []
@@ -15,7 +15,9 @@ class store_seir(Analyzer):
         self.I = []
         self.R = []
         self.Q = []
-        self.ND = []
+        self.IND = []
+        self.Efree = []
+        self.printout=printout
         return
 
     def apply(self, sim):
@@ -26,7 +28,12 @@ class store_seir(Analyzer):
         self.I.append(ppl.infectious.sum())
         self.R.append(ppl.recovered.sum() + ppl.dead.sum())
         self.Q.append(ppl.quarantined.sum())
-        self.ND.append((ppl.infectious & (~ppl.diagnosed)).sum())        
+        self.IND.append((ppl.infectious & (~ppl.diagnosed)).sum())  
+        self.Efree.append((ppl.exposed & (~ppl.infectious) & (~ppl.diagnosed)).sum() )
+        EIfree = self.IND[-1]+self.Efree[-1]
+        if (self.printout):
+            print(f"day {sim.t} -> I (free): {self.I[-1]} ({self.IND[-1]}),"+\
+                f" E+I (free): {self.I[-1]+self.E[-1]} ({EIfree}) R: {self.R[-1]}")      
         return
 
     def plot(self, **args):
@@ -44,5 +51,5 @@ class store_seir(Analyzer):
 
     def out_save(self):
         
-        return np.array(list(zip(self.t, self.S, self.E, self.I, self.R, self.Q, self.ND)),
-            dtype=[(i,np.int_) for i in ["t","S","E","I","R", "Q", "nondiag"]])
+        return np.array(list(zip(self.t, self.S, self.E, self.I, self.R, self.Q, self.IND, self.Efree)),
+            dtype=[(i,np.int_) for i in ["t","S","E","I","R", "Q", "nondiag","Enondiag"]])
