@@ -128,7 +128,7 @@ class RankTester(cvi.Intervention):
         '''
         which = self.__class__.__name__
         pars = {"label": self.input_args["label"], "ranker": self.ranker.__class__.__name__,
-        "n_random": self.n_tests_rand, "n_algo": self.n_tests_algo_day}
+         "n_tests":self.n_tests}
         output = dict(which=which, pars=pars)
         return output
 
@@ -249,7 +249,7 @@ class RankTester(cvi.Intervention):
                 #test_probs[test_inds_symp] = 0.
                 ## get from rank
                 valid = set(range(N)).difference(idx_diagnosed).difference(test_inds_symp)
-                rank_good = rank[valid].sort_values(ascending=False)
+                rank_good = rank[list(valid)].sort_values(ascending=False)
  
                 if len(rank_good)==0:
                     warnings.warn("No tests from ranker, test_probs: {}".format(sum(test_probs>0)))
