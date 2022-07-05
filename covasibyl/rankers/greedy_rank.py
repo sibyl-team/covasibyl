@@ -110,7 +110,7 @@ class GreedyRanker(AbstractRanker):
         if self.sec_neigh:
             rank_greedy = run_greedy_sec_neigh(self, obs_df, t_day, contacts_df, self.N, tau = self.tau, lamb = self.lamb,verbose=False) 
         else:
-            rank_greedy = run_greedy(self, obs_df, t_day, contacts_df, self.N, tau = self.tau, verbose=False, debug=False)
+            rank_greedy = run_greedy(obs_df, t_day, contacts_df, self.N, self.rng, tau = self.tau, verbose=False, debug=False)
         tgre=time.time() - t0
         print(f"t_greedy_tot: {tgre:6.3f}")
 
@@ -123,7 +123,7 @@ class GreedyRanker(AbstractRanker):
 
 
 
-def run_greedy(self, observ, T:int, contacts, N, noise = 1e-3, tau = TAU_INF, verbose=True, debug=False):
+def run_greedy(observ, T:int, contacts, N, rng, noise = 1e-3, tau = TAU_INF, verbose=True, debug=False):
 
     t0 = time.time()
     observ = observ[(observ["t_test"] <= T)]
@@ -189,13 +189,13 @@ def run_greedy(self, observ, T:int, contacts, N, noise = 1e-3, tau = TAU_INF, ve
             if i % 1000 == 0:
                 print("Done... "+ str(i) + "/" + str(N))
         if i in idx_non_obs:
-            Score[i] = -1 + self.rng.rand() * noise
+            Score[i] = -1 + rng.rand() * noise
         if i in idx_I and i not in idx_R:
             Score[i] = N * observ[(observ['i'] == i) & (observ['s'] == 1)]['t_test'].max()
         elif i in idx_S: #at time T
-            Score[i] = -1 + self.rng.rand() * noise
+            Score[i] = -1 + rng.rand() * noise
         elif i in idx_R: #anytime
-            Score[i] = -1 + self.rng.rand() * noise
+            Score[i] = -1 + rng.rand() * noise
     sorted_Score = list(sorted(Score.items(),key=lambda item: item[1], reverse=True))
     tscore = time.time() - t0
     if debug: print(f"tcs_score: {tloopsc:5.3f}, tscore {tscore:5.3f}", end=" ")
