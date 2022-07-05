@@ -20,6 +20,7 @@ class GreedyRanker(AbstractRanker):
         self.sec_neigh = sec_neigh
         self.lamb = lamb
         self.rng = np.random.RandomState(1)
+        self.debug = False
 
     def init(self, N, T):
         self.contacts = None
@@ -91,7 +92,7 @@ class GreedyRanker(AbstractRanker):
         for obs in daily_obs:
             self.obs.append(obs)
         tobs = time.time() - t0 
-        print(f"tobs: {tobs:4.3e} s,",end=" ")
+        if self.debug: print(f"tobs: {tobs:4.3e} s,",end=" ")
         t0=time.time()
         self._clear_old_contacts(t_day)
         tclr = time.time()-t0
@@ -99,7 +100,7 @@ class GreedyRanker(AbstractRanker):
         self._save_contacts(daily_contacts)
         tc=time.time()-t0
         
-        print(f" tclear: {tclr:4.3e}, t_savec: {tc:6.5f} s", end="\n")
+        if self.debug: print(f" tclear: {tclr:4.3e}, t_savec: {tc:6.5f} s", end="\n")
 
         obs_df = pd.DataFrame(self.obs, columns=["i", "s", "t_test"])
         contacts_df = pd.DataFrame({k: self.contacts[k] for k in ("i", "j", "t", "lambda")})
@@ -110,7 +111,7 @@ class GreedyRanker(AbstractRanker):
         if self.sec_neigh:
             rank_greedy = run_greedy_sec_neigh(self, obs_df, t_day, contacts_df, self.N, tau = self.tau, lamb = self.lamb,verbose=False) 
         else:
-            rank_greedy = run_greedy(obs_df, t_day, contacts_df, self.N, self.rng, tau = self.tau, verbose=False, debug=False)
+            rank_greedy = run_greedy(obs_df, t_day, contacts_df, self.N, self.rng, tau = self.tau, verbose=False, debug=self.debug)
         tgre=time.time() - t0
         print(f"t_greedy_tot: {tgre:6.3f}")
 
@@ -165,12 +166,12 @@ def run_greedy(observ, T:int, contacts, N, rng, noise = 1e-3, tau = TAU_INF, ver
         # the maximum time at which I am observed as S (for both infector and
         # infected)
     tloop = time.time()-t0
-    if debug: print(f"tloop: {tloop:3.2e} s", end=" ")
+    if debug: print(f"tloop: {tloop:4.1e} s", end=" ")
     if verbose:
         print("! Assuming contacts as direct links !", file=sys.stderr)
         print("! Assuming that if i is infected at t < T (and not observed as R), it is still infected at T !", file=sys.stderr)
 
-    Score = dict([(i, 0) for i in range(N)])
+    Score = pd.Series(np.zeros(N)) #dict([(i, 0) for i in range(N)])
     print(f"all contacts: {len(contacts)}")
     t1 = time.time()
     contacts_cut = contacts[(contacts["i"].isin(idx_to_inf)) \
@@ -178,7 +179,7 @@ def run_greedy(observ, T:int, contacts, N, rng, noise = 1e-3, tau = TAU_INF, ver
     tcut = time.time() -t1
     print(f"all contacts cut: {len(contacts_cut)}, taken: {tcut:4.2f}")
     t0 = time.time()
-    for i, j, t in contacts_cut[["i", "j", "t"]].to_numpy():
+    for i, j, t in contacts_cut[["i", "j", "t"]].values:
         if t > max(maxS[i], maxS[j]):
             if t < minR[j]:
                 Score[i] += 1
@@ -187,7 +188,8 @@ def run_greedy(observ, T:int, contacts, N, rng, noise = 1e-3, tau = TAU_INF, ver
     for i in range(0,N):
         if verbose:
             if i % 1000 == 0:
-                print("Done... "+ str(i) + "/" + str(N))
+                v =i/N
+                print(f"\rDone... {v:3.2%}", end="")
         if i in idx_non_obs:
             Score[i] = -1 + rng.rand() * noise
         if i in idx_I and i not in idx_R:
@@ -196,7 +198,10 @@ def run_greedy(observ, T:int, contacts, N, rng, noise = 1e-3, tau = TAU_INF, ver
             Score[i] = -1 + rng.rand() * noise
         elif i in idx_R: #anytime
             Score[i] = -1 + rng.rand() * noise
-    sorted_Score = list(sorted(Score.items(),key=lambda item: item[1], reverse=True))
+    if verbose: print("")
+    #sorted_Score = list(sorted(Score.items(),key=lambda item: item[1], reverse=True))
+    Score = Score.sort_values(ascending=False)
+    sorted_Score = list(Score.to_dict().items())
     tscore = time.time() - t0
     if debug: print(f"tcs_score: {tloopsc:5.3f}, tscore {tscore:5.3f}", end=" ")
     return sorted_Score
