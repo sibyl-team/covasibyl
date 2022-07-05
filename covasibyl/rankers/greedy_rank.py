@@ -8,6 +8,7 @@ TAU_INF = 10000000
 
 class GreedyRanker(AbstractRanker):
 
+
     def __init__(self,
                 include_S = True,
                 tau = TAU_INF,
@@ -30,7 +31,7 @@ class GreedyRanker(AbstractRanker):
 
         return True
 
-    def _save_contacts(self, daily_contacts):
+    '''def _save_contacts(self, daily_contacts):
         """
         Save contacts in a pandas dataframe
         This is slower than numpy but easier to handle
@@ -47,6 +48,27 @@ class GreedyRanker(AbstractRanker):
             self.contacts = cts_d
         else:
             self.contacts = pd.concat((self.contacts, cts_d), ignore_index=True)
+    '''
+    def _save_contacts(self, daily_contacts):
+        """
+        Save contacts in a pandas dataframe
+        This is slower than numpy but easier to handle
+        """
+        conts_dtype = np.dtype([(k, "int") for k in ["i","j","t"]]+[("lambda", "float")])
+
+        if isinstance(daily_contacts, np.recarray):
+            cts_d = daily_contacts.copy()
+            cts_d.dtype.names = "i", "j", "t", "lambda"
+            
+        else:
+            cts_d = np.array(daily_contacts,dtype=conts_dtype)
+
+        assert len(cts_d) == len(daily_contacts)
+        print(f"{len(cts_d)} new contacts,", end=" ")
+        if self.contacts is None:
+            self.contacts = cts_d
+        else:
+            self.contacts = np.concatenate((self.contacts, cts_d))
     
     def _clear_old_contacts(self, t_day):
         if self.contacts is not None:
@@ -65,26 +87,33 @@ class GreedyRanker(AbstractRanker):
         computing rank of infected individuals
         return: list -- [(index, value), ...]
         '''
-
+        t0=time.time()
         for obs in daily_obs:
             self.obs.append(obs)
-
+        tobs = time.time() - t0 
+        print(f"tobs: {tobs:4.3e} s,",end=" ")
+        t0=time.time()
         self._clear_old_contacts(t_day)
+        tclr = time.time()-t0
         t0=time.time()
         self._save_contacts(daily_contacts)
         tc=time.time()-t0
         
-        #print(f"t_savec: {tc:6.5f} s", end=" ")
+        print(f" tclear: {tclr:4.3e}, t_savec: {tc:6.5f} s", end="\n")
 
         obs_df = pd.DataFrame(self.obs, columns=["i", "s", "t_test"])
-        contacts_df = self.contacts #pd.DataFrame(self.contacts, columns=["i", "j", "t", "lambda"])
+        contacts_df = pd.DataFrame({k: self.contacts[k] for k in ("i", "j", "t", "lambda")})
 
         if not self.include_S:
             obs_df = obs_df[obs_df.s != 0] # just infected
+        t0 = time.time()
         if self.sec_neigh:
             rank_greedy = run_greedy_sec_neigh(self, obs_df, t_day, contacts_df, self.N, tau = self.tau, lamb = self.lamb,verbose=False) 
         else:
-            rank_greedy = run_greedy(self, obs_df, t_day, contacts_df, self.N, tau = self.tau, verbose=False) 
+            rank_greedy = run_greedy(self, obs_df, t_day, contacts_df, self.N, tau = self.tau, verbose=False, debug=False)
+        tgre=time.time() - t0
+        print(f"t_greedy_tot: {tgre:6.3f}")
+
         dict_greedy = dict(rank_greedy)
         self.rank_not_zero[t_day] =  sum(1 for x in rank_greedy if x[1] > 0)
         data["rank_not_zero"] = self.rank_not_zero
@@ -94,7 +123,7 @@ class GreedyRanker(AbstractRanker):
 
 
 
-def run_greedy(self, observ, T:int, contacts, N, noise = 1e-3, tau = TAU_INF, verbose=True):
+def run_greedy(self, observ, T:int, contacts, N, noise = 1e-3, tau = TAU_INF, verbose=True, debug=False):
 
     t0 = time.time()
     observ = observ[(observ["t_test"] <= T)]
@@ -121,7 +150,7 @@ def run_greedy(self, observ, T:int, contacts, N, noise = 1e-3, tau = TAU_INF, ve
     idx_to_inf = np.setdiff1d(idx_to_inf, idx_R) # nor R anytime
 
     idcs_t = time.time()-t0
-    #print(f"tinds: {idcs_t:3.2e} s " ,end="")
+    if debug: print(f"tinds: {idcs_t:3.2e} s " ,end="")
     t0=time.time()
 
 
@@ -136,7 +165,7 @@ def run_greedy(self, observ, T:int, contacts, N, noise = 1e-3, tau = TAU_INF, ve
         # the maximum time at which I am observed as S (for both infector and
         # infected)
     tloop = time.time()-t0
-    #print(f"tloop: {tloop:3.2e} s")
+    if debug: print(f"tloop: {tloop:3.2e} s", end=" ")
     if verbose:
         print("! Assuming contacts as direct links !", file=sys.stderr)
         print("! Assuming that if i is infected at t < T (and not observed as R), it is still infected at T !", file=sys.stderr)
@@ -153,7 +182,8 @@ def run_greedy(self, observ, T:int, contacts, N, noise = 1e-3, tau = TAU_INF, ve
         if t > max(maxS[i], maxS[j]):
             if t < minR[j]:
                 Score[i] += 1
-    
+    tloopsc = time.time() -t0
+    t0=time.time()
     for i in range(0,N):
         if verbose:
             if i % 1000 == 0:
@@ -168,7 +198,7 @@ def run_greedy(self, observ, T:int, contacts, N, noise = 1e-3, tau = TAU_INF, ve
             Score[i] = -1 + self.rng.rand() * noise
     sorted_Score = list(sorted(Score.items(),key=lambda item: item[1], reverse=True))
     tscore = time.time() - t0
-    #print(f"t_score: {tscore:5.3f}")
+    if debug: print(f"tcs_score: {tloopsc:5.3f}, tscore {tscore:5.3f}", end=" ")
     return sorted_Score
 
 
