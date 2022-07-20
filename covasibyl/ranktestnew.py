@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import sciris as sc
 
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, auc, roc_auc_score
 
 import covasim.interventions as cvi
 import covasim.utils as cvu
@@ -223,6 +223,8 @@ class RankTester(cvi.Intervention):
             true_inf = sim.people.infectious
             idx_diagnosed = cvu.true(already_diagnosed)
             test_probs[idx_diagnosed] = 0.
+
+            true_EI = sim.people.exposed # includes I
             
             ## Do rand tests
             randgen = self.tester.randstate
@@ -243,8 +245,16 @@ class RankTester(cvi.Intervention):
                 rank_df = pd.DataFrame(rank_algo, columns=["idx","rank"]).set_index("idx")
                 rank = rank_df["rank"].sort_index()
                 ### compute AUC immediately
-                fpr, tpr, _ = roc_curve(true_inf, rank.to_numpy())
-                auc_inf = auc(fpr,tpr)  #if real_inf > 0 else np.nan
+                if(true_inf.sum() > 0):
+                    fpr, tpr, _ = roc_curve(true_inf, rank.to_numpy())
+                    auc_inf = auc(fpr,tpr)  #if real_inf > 0 else np.nan
+                else:
+                    auc_inf = np.nan
+                if true_EI.sum() > 0:
+                    auc_EI = roc_auc_score(true_EI, rank.to_numpy())
+                else:
+                    auc_EI = np.nan
+
                 # add rand tests indices to exclude testing
                 #test_probs[test_inds_symp] = 0.
                 ## get from rank
@@ -262,11 +272,12 @@ class RankTester(cvi.Intervention):
 
                 accu = true_inf_rk / min(len(test_inds), true_inf.sum())
                 if self.verbose:
-                    print("day {}: AUC_I_rk: {:4.3f}, n_I_rk: {}, accu {:.2%}".format(
-                    day,auc_inf, true_inf_rk, accu) ,
+                    print("day {}: AUC(I,EI): ({:4.3f},{:4.3f}), n_I_rk: {}, accu {:.2%}".format(
+                    day,auc_inf, auc_EI, true_inf_rk, accu) ,
                     end=" ")
             else:
                 auc_inf = np.nan
+                auc_EI = np.nan
                 true_inf_rk = 0
                 accu = 0
                 test_inds = []
@@ -274,6 +285,7 @@ class RankTester(cvi.Intervention):
             print(f"nt_rand: {len(test_inds_symp)}", end=" ")
             #print("", end=" ")
             day_stats["auc_I"] = auc_inf
+            day_stats["auc_EI"] = auc_EI
             day_stats["accu_I"] = accu
             day_stats["true_I_rk"] = true_inf_rk
             day_stats["nt_rand"] = len(test_inds_symp)
