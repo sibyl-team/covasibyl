@@ -35,6 +35,18 @@ def get_symp_probs(sim, or_symp_prob, pdf=None):
 
     return symp_prob
 
+def _calc_aucs(true_inf, true_EI, rank):
+    if(true_inf.sum() > 0):
+        fpr, tpr, _ = roc_curve(true_inf, rank.to_numpy())
+        auc_inf = auc(fpr,tpr)  #if real_inf > 0 else np.nan
+    else:
+        auc_inf = np.nan
+    if true_EI.sum() > 0:
+        auc_EI = roc_auc_score(true_EI, rank.to_numpy())
+    else:
+        auc_EI = np.nan
+    return auc_inf, auc_EI
+
 
 class RankTester(cvi.Intervention):
     """
@@ -60,6 +72,7 @@ class RankTester(cvi.Intervention):
                 debug=False,
                 verbose=True,
                 mitigate=True,
+                only_sympt=False,
                 **kwargs
                 ):
 
@@ -100,6 +113,8 @@ class RankTester(cvi.Intervention):
             self._obs_source=False
         self.mitigate = mitigate
         self._check_epi_tests = kwargs["check_epi_tests"] if "check_epi_tests" in kwargs else False
+        self.only_random = kwargs["only_random_tests"] if "only_random_tests" in kwargs else False
+        self.only_symptom = only_sympt
 
         self._warned = defaultdict(lambda: False)
 
@@ -159,6 +174,30 @@ class RankTester(cvi.Intervention):
 
         self.hist = []
         self.days_cts = []
+    
+    def _warn_once(self, key:str, message:str):
+        if not self._warned[key]:
+            warnings.warn(message)
+            self._warned[key] = True
+
+    def _set_symp_quar_prob(self, test_probs, sim):
+        """
+        set symp prob in the test_probs array
+        """
+        # Symptomatics test
+        symp_probs = get_symp_probs(sim, self.symp_test, self.test_pdf)
+        symp_inds  = cvu.true(sim.people.symptomatic)
+        # Handle quarantine testing
+        quar_test_inds = cvi.get_quar_inds(self.quar_policy, sim)
+        test_probs[quar_test_inds] = self.quar_test_p
+        test_probs[symp_inds] = symp_probs
+
+    def _remove_diagnosed_prob(self, test_probs, sim):
+        ## remove already diagnosed
+        already_diagnosed = sim.people.diagnosed
+        idx_diagnosed = cvu.true(already_diagnosed)
+        test_probs[idx_diagnosed] = 0.
+
 
     def apply(self, sim):
         day = sim.t
@@ -200,9 +239,7 @@ class RankTester(cvi.Intervention):
             rank_algo = list(zip(np.arange(N),np.random.rand(N)))
         if self._check_epi_tests and (day >= self.start_day):
             ### random test
-            if not self._warned["check_epi"]:
-                warnings.warn("Doing only random tests WITHOUT ANY INFORMATION FROM RANKER")
-                self._warned["check_epi"] = True
+            self._warn_once("check_epi","Doing random tests for DEV purpose")
             ### Disable normal intervention
             ACTIVE = False
             self.tester._do_random_tests(sim, n_tests=(self.n_tests_algo_day+self.n_tests_rand))
@@ -211,76 +248,75 @@ class RankTester(cvi.Intervention):
         if ACTIVE:
             test_probs = np.zeros(N)
             # Symptomatics test
-            symp_probs = get_symp_probs(sim, self.symp_test, self.test_pdf)
-            symp_inds  = cvu.true(sim.people.symptomatic)
-            # Handle quarantine testing
-            quar_test_inds = cvi.get_quar_inds(self.quar_policy, sim)
-            test_probs[quar_test_inds] = self.quar_test_p
-            test_probs[symp_inds] = symp_probs
+            self._set_symp_quar_prob(test_probs, sim)
 
             ## remove already diagnosed
-            already_diagnosed = sim.people.diagnosed
-            true_inf = sim.people.infectious
-            idx_diagnosed = cvu.true(already_diagnosed)
-            test_probs[idx_diagnosed] = 0.
-
-            true_EI = sim.people.exposed # includes I
+            self._remove_diagnosed_prob(test_probs, sim)
             
+            true_inf = sim.people.infectious
+            true_EI = sim.people.exposed # includes I
+            idx_diagnosed = cvu.true(sim.people.diagnosed)
             ## Do rand tests
             randgen = self.tester.randstate
             #n_tests_rnd = min(self.n_tests_rand, (test_probs!=0).sum())# Don't try to test more people than have nonzero testing probability
             """test_inds_rnd = utils.choose_w_rng(probs=test_probs, n=n_tests_rnd, unique=True, 
                 rng=self.tester.randstate) # Choose who actually tests"""
-            test_inds_symp = cvu.true(
-                randgen.random(len(test_probs)) < test_probs
-            )
-            if len(test_inds_symp) > self.n_tests:
-                print(f"Rand tests: got {len(test_inds_symp)} test to do > {self.n_tests}")
-                randgen.shuffle(test_inds_symp)
-                test_inds_symp = test_inds_symp[:self.n_test]
+            if self.only_random:
+                self._warn_once("random_tests", "Doing random tests instead of sympt+ranker")
+                ## get random tests
+                test_indcs_all = utils.get_random_indcs_test(sim, self.n_tests, randgen)
+            else:
+                ## NO RANDOM TESTS
+                test_inds_symp = cvu.true(
+                    randgen.random(len(test_probs)) < test_probs
+                )
+                if len(test_inds_symp) > self.n_tests:
+                    print(f"Rand tests: got {len(test_inds_symp)} test to do > {self.n_tests}")
+                    randgen.shuffle(test_inds_symp)
+                    test_inds_symp = test_inds_symp[:self.n_tests]
             
-            n_tests_algo = self.n_tests - len(test_inds_symp)
-            if n_tests_algo > 0:
-                ### Ranker tests
-                rank_df = pd.DataFrame(rank_algo, columns=["idx","rank"]).set_index("idx")
-                rank = rank_df["rank"].sort_index()
-                ### compute AUC immediately
-                if(true_inf.sum() > 0):
-                    fpr, tpr, _ = roc_curve(true_inf, rank.to_numpy())
-                    auc_inf = auc(fpr,tpr)  #if real_inf > 0 else np.nan
+                n_tests_algo = self.n_tests - len(test_inds_symp)
+                if self.only_symptom:
+                    self._warn_once("only_sympt", "Only symptomatic testing")
+                    ## Don't run algo
+                    n_tests_algo = -2
+                
+                if n_tests_algo > 0:
+                    ### Ranker tests
+                    rank_df = pd.DataFrame(rank_algo, columns=["idx","rank"]).set_index("idx")
+                    rank = rank_df["rank"].sort_index()
+                    ### compute AUC immediately
+                    auc_inf, auc_EI = _calc_aucs(true_inf, true_EI, rank)
+
+                    # add rand tests indices to exclude testing
+                    #test_probs[test_inds_symp] = 0.
+                    ## get from rank
+                    valid = set(range(N)).difference(idx_diagnosed).difference(test_inds_symp)
+                    rank_good = rank[list(valid)].sort_values(ascending=False)
+    
+                    if len(rank_good)==0:
+                        warnings.warn("No tests from ranker, test_probs: {}".format(sum(test_probs>0)))
+                    test_inds = rank_good[:n_tests_algo].index.to_numpy()
+                    ## accuracy
+                    
+                    true_inf_rk = true_inf[test_inds].sum()
+                
+                    accu = true_inf_rk / min(len(test_inds), true_inf.sum())
+                    if self.verbose:
+                        print("day {}: AUC(I,EI): ({:4.3f},{:4.3f}), n_I_rk: {}, accu {:.2%}".format(
+                        day,auc_inf, auc_EI, true_inf_rk, accu) ,
+                        end=" ")
+                    test_indcs_all = np.concatenate((test_inds_symp, test_inds))
+
                 else:
                     auc_inf = np.nan
-                if true_EI.sum() > 0:
-                    auc_EI = roc_auc_score(true_EI, rank.to_numpy())
-                else:
                     auc_EI = np.nan
-
-                # add rand tests indices to exclude testing
-                #test_probs[test_inds_symp] = 0.
-                ## get from rank
-                valid = set(range(N)).difference(idx_diagnosed).difference(test_inds_symp)
-                rank_good = rank[list(valid)].sort_values(ascending=False)
- 
-                if len(rank_good)==0:
-                    warnings.warn("No tests from ranker, test_probs: {}".format(sum(test_probs>0)))
-                test_inds = rank_good[:n_tests_algo].index.to_numpy()
-                ## accuracy
-                
-                true_inf_rk = true_inf[test_inds].sum()
-            
-                
-
-                accu = true_inf_rk / min(len(test_inds), true_inf.sum())
-                if self.verbose:
-                    print("day {}: AUC(I,EI): ({:4.3f},{:4.3f}), n_I_rk: {}, accu {:.2%}".format(
-                    day,auc_inf, auc_EI, true_inf_rk, accu) ,
-                    end=" ")
-            else:
-                auc_inf = np.nan
-                auc_EI = np.nan
-                true_inf_rk = 0
-                accu = 0
-                test_inds = []
+                    true_inf_rk = 0
+                    accu = 0
+                    #test_inds = []
+                    test_indcs_all = test_inds_symp
+                ## concatenate tests
+                ## END NO RANDOM TESTS
 
             print(f"nt_rand: {len(test_inds_symp)}", end=" ")
             #print("", end=" ")
@@ -292,8 +328,8 @@ class RankTester(cvi.Intervention):
             
 
             ### test actually
-            test_indcs_all = np.concatenate((test_inds_symp, test_inds))
-            assert len(np.unique(test_indcs_all)) == self.n_tests
+            if not self.only_symptom:
+                assert len(np.unique(test_indcs_all)) == self.n_tests
             #print("Num unique tests: ",len(np.unique(test_indcs_all)))
             self.tester.run_tests(sim, test_indcs_all,
                         test_sensitivity=self.sensitivity,

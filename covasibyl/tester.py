@@ -112,7 +112,6 @@ class CovasimTester:
         if not self.give_diagnosis:
             warnings.warn("WARNING: Not containing the tested individuals")
 
-        
     
     def _not_diagnosed(self):
         return np.isnan(self.date_diagnosed)
