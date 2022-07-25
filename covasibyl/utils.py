@@ -29,6 +29,24 @@ def get_contacts_day(people):
     #print("")
     return pd.DataFrame(dict(zip(["i","j","m"],(cend.row, cend.col, cend.data))) )
 
+def get_day_contacts_mat(people, exclude_lays=[], to_df=True):
+    N = len(people.sex)
+    c = 0
+    for n,lay in people.contacts.items():
+        if n in exclude_lays:
+            continue
+        w = people.pars["beta_layer"][n]
+        u = remove_invalid_cts(**lay)
+        #print(f" {n}-> {w}", end=" ")
+        mat = sp.csr_matrix((u[2]*w,(u[0],u[1])), shape=(N,N))
+        c += mat
+    if to_df:
+        cend = c.tocoo()
+        #print("")
+        return pd.DataFrame(dict(zip(["i","j","m"],(cend.row, cend.col, cend.data))) )
+    else:
+        return c
+
 def _cts_mat_to_df(c, idcs=["i","j","m"]):
     """
     Transform sparse contact matrix into dataframe of contacts
@@ -100,3 +118,15 @@ def n_binomial(prob, n, rng=None):
 
 def gamma_pdf_full(x, alfa, beta ):
     return beta**alfa*x**(alfa-1)*np.exp(-1*beta*x)/gamma_f(alfa)
+
+
+def get_random_indcs_test(sim, n_tests, rng):
+    today = sim.t
+    people = sim.people
+    probs = np.ones(len(people.age))
+    probs /= probs.sum()
+
+    inds_test = choose_w_rng(probs=probs, n=n_tests, unique=True, 
+            rng=rng)
+
+    return inds_test
