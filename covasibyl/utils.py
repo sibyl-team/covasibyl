@@ -54,15 +54,17 @@ def _cts_mat_to_df(c, idcs=["i","j","m"]):
     cend = c.tocoo()
     return pd.DataFrame(dict(zip(idcs,(cend.row, cend.col, cend.data))) )
 
-def filt_contacts_df(cts, idcs, multipl, N):
+def filt_contacts_df(cts, idcs, multipl, N, only_i=False):
     mat  = sp.coo_matrix((cts["m"], (cts["i"], cts["j"]))).tocsr()
     d = np.ones(N)
     d[idcs] = multipl
     filt = sp.diags(d, format="csr")
+    if not only_i:
+        mat = mat.dot(filt) ##djj
+    #if both: 
+    mat = filt.dot(mat) #dii
 
-    matres = filt.dot(mat.dot(filt))
-
-    return _cts_mat_to_df(matres)
+    return _cts_mat_to_df(mat)
 
 
 def check_free_birds(people):
