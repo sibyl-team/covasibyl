@@ -68,6 +68,7 @@ class RankTester(cvi.Intervention):
                 swab_delay=None,
                 quar_policy=None,
                 iso_cts_strength = 0.1,
+                quar_factor=1.,
                 logger=None,
                 debug=False,
                 verbose=True,
@@ -94,6 +95,8 @@ class RankTester(cvi.Intervention):
         self.test_pdf = cvu.get_pdf(**sc.mergedicts(swab_delay))
         # multiply contacts strength by this factor for isolated individuals
         self.iso_cts_strength = iso_cts_strength
+        ## same for the quarantine, but with both infector and infected
+        self.quar_factor = quar_factor
         self.debug = debug
 
         self.contacts_day = None
@@ -224,7 +227,12 @@ class RankTester(cvi.Intervention):
         conts_m = utils.get_contacts_day(sim.people)
         ## remove contacts that are isolated (tested)
         tested_iso = cvu.true(sim.people.diagnosed)
-        conts_m = utils.filt_contacts_df(conts_m, tested_iso, self.iso_cts_strength, N)
+        conts_m = utils.filt_contacts_df(conts_m,
+             tested_iso, self.iso_cts_strength, N, only_i=True)
+        if self.quar_factor < 1:
+            ## filter the contacts for quarantined
+            quar_idcs = cvu.true(sim.people.quarantined)
+            conts_m = utils.filt_contacts_df(conts_m, quar_idcs, self.quar_factor, N)
 
         conts_m["day"] = day
         self.days_cts.append(day)
