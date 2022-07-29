@@ -182,6 +182,7 @@ class RankTester(cvi.Intervention):
 
         self.hist = []
         self.days_cts = []
+        self.conts_prev_day = None
     
     def _warn_once(self, key:str, message:str):
         if not self._warned[key]:
@@ -219,46 +220,67 @@ class RankTester(cvi.Intervention):
             ## observations from the previous day
             self.daily_obs = []"""
 
-        obs_day = self.daily_obs
         day_stats = dict(day=day)
         day_stats["true_I_rk"] = 0
         N = len(sim.people.age)
 
-        conts_m = utils.get_contacts_day(sim.people)
+        contacts_df = utils.get_contacts_day(sim.people)
         ## remove contacts that are isolated (tested)
         tested_iso = cvu.true(sim.people.diagnosed)
-        conts_m = utils.filt_contacts_df(conts_m,
+        contacts_df = utils.filt_contacts_df(contacts_df,
              tested_iso, self.iso_cts_strength, N, only_i=True)
         if self.quar_factor < 1:
             ## filter the contacts for quarantined
             quar_idcs = cvu.true(sim.people.quarantined)
-            conts_m = utils.filt_contacts_df(conts_m, quar_idcs, self.quar_factor, N)
+            contacts_df = utils.filt_contacts_df(contacts_df, quar_idcs, self.quar_factor, N)
 
-        conts_m["day"] = day
+        contacts_df["day"] = day
         self.days_cts.append(day)
 
-        if self.debug:
-            print(f"Day {day}, active: {ACTIVE}; n_obs: {len(obs_day):d}, num days conts: {len(self.days_cts)}", )
+        
         #contacts_day = [(i,j,day, val) for i,j,val in zip(conts_m.row, conts_m.col, conts_m.data)]
-        contacts_day = conts_m[["i","j","day","m"]].to_records(index=False)
+        #contacts_day = conts_m[["i","j","day","m"]].to_records(index=False)
 
+        conts_prev_day = self.conts_prev_day
+        HAVE_CONTS = conts_prev_day is not None
         FIND_INFECTED = sim.people.infectious.sum() > 0 or sim.people.exposed.sum()>0
+        FIND_INFECTED = FIND_INFECTED and HAVE_CONTS
 
+        obs_ranker = self.tester.get_results(day-1) ## get the correct obs for the ranker
+        if self.debug:
+            print(f"Day {day}, active: {ACTIVE}; n_obs: {len(obs_ranker):d}, num days conts: {len(self.days_cts)}", )
+
+        print("Day: ", sim.t)
         ### get rank from the algorithm
         if FIND_INFECTED:
-            rank_algo = self.ranker.rank(day, contacts_day, obs_day, self.ranker_data)
+            ## transform contacts
+            assert (conts_prev_day["day"]==day-1).all()
+            conts_ranker = conts_prev_day[["i","j","day","m"]].to_records(index=False)
+            ## shift obs ranker (tester sets t=sim.t)
+            # time is the third column
+            if len(obs_ranker) > 0: obs_ranker[:,2] -= 1
+
+            rank_algo = self.ranker.rank(day-1, conts_ranker, obs_ranker, self.ranker_data)
+        elif not HAVE_CONTS:
+            print("No contacts to give")
+            if ACTIVE:
+                print("Cannot run ranker, we don't have contacts.")
+                ACTIVE = False
         else:
             warnings.warn("Epidemy ended, returning random ranking")
             rank_algo = list(zip(np.arange(N),np.random.rand(N)))
-        if self._check_epi_tests and (day >= self.start_day):
+        
+        if self._check_epi_tests and ACTIVE:
             ### random test
             self._warn_once("check_epi","Doing random tests for DEV purpose")
             ### Disable normal intervention
             ACTIVE = False
             self.tester._do_random_tests(sim, n_tests=(self.n_tests_algo_day+self.n_tests_rand))
+
         
 
         if ACTIVE:
+            
             test_probs = np.zeros(N)
             # Symptomatics test
             self._set_symp_quar_prob(test_probs, sim)
@@ -296,7 +318,8 @@ class RankTester(cvi.Intervention):
                     randgen.random(len(test_probs)) < test_probs
                 )
                 if len(test_inds_symp) > self.n_tests:
-                    #print(f"Rand tests: got {len(test_inds_symp)} test to do > {self.n_tests}")
+                    self._warn_once("test_sympt",
+                        f"Symptom tests exceeded capacity: got {len(test_inds_symp)} people to test > {self.n_tests}")
                     randgen.shuffle(test_inds_symp)
                     test_inds_symp = test_inds_symp[:self.n_tests]
             
@@ -352,6 +375,7 @@ class RankTester(cvi.Intervention):
             if not self.only_symptom:
                 assert len(np.unique(test_indcs_all)) == self.n_tests
             #print("Num unique tests: ",len(np.unique(test_indcs_all)))
+            ## this tests the individuals today
             self.tester.run_tests(sim, test_indcs_all,
                         test_sensitivity=self.sensitivity,
                         test_specificity=self.specificity,
@@ -406,6 +430,10 @@ class RankTester(cvi.Intervention):
         
 
         self.hist.append(day_stats)
+        
+        ##update contacts
+        self.conts_prev_day = contacts_df
+
 
     def prepare_export(self):
         ### delete the ranker to save memory
