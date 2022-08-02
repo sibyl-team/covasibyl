@@ -225,16 +225,6 @@ class RankTester(cvi.Intervention):
         N = len(sim.people.age)
 
         contacts_df = utils.get_contacts_day(sim.people)
-        ## remove contacts that are isolated (tested)
-        tested_iso = cvu.true(sim.people.diagnosed)
-        contacts_df = utils.filt_contacts_df(contacts_df,
-             tested_iso, self.iso_cts_strength, N, only_i=True)
-        if self.quar_factor < 1:
-            ## filter the contacts for quarantined
-            quar_idcs = cvu.true(sim.people.quarantined)
-            contacts_df = utils.filt_contacts_df(contacts_df, quar_idcs, self.quar_factor, N)
-
-        contacts_df["day"] = day
         self.days_cts.append(day)
 
         
@@ -243,6 +233,21 @@ class RankTester(cvi.Intervention):
 
         conts_prev_day = self.conts_prev_day
         HAVE_CONTS = conts_prev_day is not None
+        ## process old contacts
+        if HAVE_CONTS:
+            ## remove contacts that are isolated (tested)
+            tested_iso = cvu.true(sim.people.diagnosed)
+            conts_prev_day = utils.filt_contacts_df(conts_prev_day,
+                tested_iso, self.iso_cts_strength, N, only_i=True)
+            if self.quar_factor < 1:
+                ## filter the contacts for quarantined
+                self._warn_once("qfact", f"Quarantine factor is {self.quar_factor}")
+                quar_idcs = cvu.true(sim.people.quarantined)
+                msum = conts_prev_day["m"].sum()
+                conts_prev_day = utils.filt_contacts_df(conts_prev_day, quar_idcs, self.quar_factor, N)
+                if len(quar_idcs) > 0:
+                    assert conts_prev_day["m"].sum() < msum
+        
         FIND_INFECTED = sim.people.infectious.sum() > 0 or sim.people.exposed.sum()>0
         FIND_INFECTED = FIND_INFECTED and HAVE_CONTS
 
@@ -254,13 +259,12 @@ class RankTester(cvi.Intervention):
         ### get rank from the algorithm
         if FIND_INFECTED:
             ## transform contacts
-            assert (conts_prev_day["day"]==day-1).all()
+            ### put today's date
+            conts_prev_day["day"] = day
             conts_ranker = conts_prev_day[["i","j","day","m"]].to_records(index=False)
-            ## shift obs ranker (tester sets t=sim.t)
-            # time is the third column
-            if len(obs_ranker) > 0: obs_ranker[:,2] -= 1
 
-            rank_algo = self.ranker.rank(day-1, conts_ranker, obs_ranker, self.ranker_data)
+
+            rank_algo = self.ranker.rank(day, conts_ranker, obs_ranker, self.ranker_data)
         elif not HAVE_CONTS:
             print("No contacts to give")
             if ACTIVE:
@@ -412,7 +416,7 @@ class RankTester(cvi.Intervention):
         free_birds = len(utils.check_free_birds(sim.people))
         inf_quar = (sim.people.infectious & sim.people.quarantined).sum()
         if ACTIVE and self.verbose:
-            print("free {:d}".format(free_birds))
+            print("free {:d}, nQ: {:d}".format(free_birds, sim.people.quarantined.sum()))
         diagnosed_today = (sim.people.date_diagnosed == sim.t) | (self.tester.date_diagnosed == sim.t)
 
         day_stats["n_diag"] = (sim.people.diagnosed.sum())
