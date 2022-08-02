@@ -2,6 +2,7 @@ import sys
 import time
 import numpy as np
 import pandas as pd
+from numba import njit
 from .template_rank import AbstractRanker
 
 TAU_INF = 10000000
@@ -121,8 +122,12 @@ class GreedyRanker(AbstractRanker):
         rank = list(sorted(rank_greedy, key=lambda tup: tup[1], reverse=True))
 
         return rank
-
-
+@njit()
+def _sum_score_contacts(contacts_arr, maxS, minR, score):
+    for i, j, t in contacts_arr:
+        if t > max(maxS[i], maxS[j]):
+            if t < minR[j]:
+                score[i] += 1
 
 def run_greedy(observ, T:int, contacts, N, rng, noise = 1e-3, tau = TAU_INF, verbose=True, debug=False):
 
@@ -171,7 +176,8 @@ def run_greedy(observ, T:int, contacts, N, rng, noise = 1e-3, tau = TAU_INF, ver
         print("! Assuming contacts as direct links !", file=sys.stderr)
         print("! Assuming that if i is infected at t < T (and not observed as R), it is still infected at T !", file=sys.stderr)
 
-    Score = pd.Series(np.zeros(N)) #dict([(i, 0) for i in range(N)])
+    #Score = pd.Series(np.zeros(N)) #dict([(i, 0) for i in range(N)])
+    score_arr = np.zeros(N)
     print(f"all contacts: {len(contacts)}")
     t1 = time.time()
     contacts_cut = contacts[(contacts["i"].isin(idx_to_inf)) \
@@ -179,10 +185,13 @@ def run_greedy(observ, T:int, contacts, N, rng, noise = 1e-3, tau = TAU_INF, ver
     tcut = time.time() -t1
     print(f"all contacts cut: {len(contacts_cut)}, taken: {tcut:4.2f}")
     t0 = time.time()
-    for i, j, t in contacts_cut[["i", "j", "t"]].values:
+    """for i, j, t in contacts_cut[["i", "j", "t"]].values:
         if t > max(maxS[i], maxS[j]):
             if t < minR[j]:
                 Score[i] += 1
+    """
+    _sum_score_contacts(contacts_cut[["i", "j", "t"]].values, maxS, minR, score_arr)
+    Score = pd.Series(score_arr)
     tloopsc = time.time() -t0
     t0=time.time()
     for i in range(0,N):
