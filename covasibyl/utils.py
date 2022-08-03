@@ -5,6 +5,10 @@ import scipy.sparse as sp
 from scipy.special import gamma as gamma_f
 import pandas as pd
 
+def get_git_revision_hash() -> str:
+    return subprocess.check_output(['git', 'rev-parse', 'HEAD'],
+         cwd=Path(__file__).resolve().parent
+         ).decode('ascii').strip()
 
 def remove_invalid_cts(p1, p2, beta):
     """
