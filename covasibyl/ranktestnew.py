@@ -35,6 +35,23 @@ def get_symp_probs(sim, or_symp_prob, pdf=None):
 
     return symp_prob
 
+def _get_idcs_quarantine(sim):
+    day = sim.t
+    people = sim.people
+    pending = sim.people._pending_quarantine
+    if len(pending[day]) > 0:
+        pd_q = np.array(pending[day])
+        idcs_pending = pd_q[:,0].astype(int)
+        iquar = cvu.itruei(sim.people.quarantined | sim.people.diagnosed | sim.people.dead | sim.people.recovered, notq)
+        toquarantine = np.setdiff1d(idcs_pending, iquar)
+    else:
+        toquarantine = []
+
+    end_quar =people.check_inds(~people.quarantined, people.date_end_quarantine, filter_inds=None)
+
+    return toquarantine, end_quar
+
+
 def _calc_aucs(true_inf, true_EI, rank):
     if(true_inf.sum() > 0):
         fpr, tpr, _ = roc_curve(true_inf, rank.to_numpy())
@@ -232,8 +249,19 @@ class RankTester(cvi.Intervention):
         if self.quar_factor < 1:
             ## filter the contacts for quarantined
             quar_idcs = cvu.true(sim.people.quarantined)
-            conts_m = utils.filt_contacts_df(conts_m, quar_idcs, self.quar_factor, N)
-
+            nq = len(quar_idcs)
+            ## adjust for future quarantine
+            extra_quar, end_quar = _get_idcs_quarantine(sim)
+            print(f"Day {day}, nquar: {len(quar_idcs)}, nextra: {len(extra_quar)}, nout: {len(end_quar)}, dtype={quar_idcs.dtype}")
+            quar_idcs = np.union1d(quar_idcs, extra_quar)
+            quar_idcs = np.setdiff1d(quar_idcs, end_quar)
+            nq_real = len(quar_idcs) - nq
+            print(f" adjust quar by {nq_real} , nq: {len(quar_idcs)}",end=" ")
+            if len(quar_idcs) > 0:
+                quar_idcs = quar_idcs.astype(int)
+                #print(f" idcs: {quar_idcs}")
+                conts_m = utils.filt_contacts_df(conts_m, quar_idcs, self.quar_factor, N)
+            else: print("")
         conts_m["day"] = day
         self.days_cts.append(day)
 
