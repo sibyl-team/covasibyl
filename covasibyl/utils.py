@@ -1,9 +1,11 @@
-from covasim import immunity
+import subprocess
+from pathlib import Path
+
 import numpy as np
-#import numba as nb
 import scipy.sparse as sp
 from scipy.special import gamma as gamma_f
 import pandas as pd
+
 
 def get_git_revision_hash() -> str:
     return subprocess.check_output(['git', 'rev-parse', 'HEAD'],
@@ -63,6 +65,29 @@ def filt_contacts_df(cts, idcs, multipl, N, only_i=False):
     d = np.ones(N)
     d[idcs] = multipl
     filt = sp.diags(d, format="csr")
+    if not only_i:
+        mat = mat.dot(filt) ##djj
+    #if both: 
+    mat = filt.dot(mat) #dii
+
+    return _cts_mat_to_df(mat)
+
+def filt_contacts_mult(cts, weight:np.ndarray, N:int, only_i=False):
+    """
+    Filter contacts by multiplying the contacts value by a 
+    factor dependent on the index
+
+    Args:
+        cts (dict-like, pandas Dataframe): the contacts, i,j,m
+        weight (np.ndarray): the vector of weight of i
+        N (int): number of individuals
+        only_i (bool, optional): _description_. Defaults to False.
+
+    Returns:
+        dataframe of contacts reweighted
+    """
+    mat  = sp.coo_matrix((cts["m"], (cts["i"], cts["j"]))).tocsr()
+    filt = sp.diags(weight, format="csr")
     if not only_i:
         mat = mat.dot(filt) ##djj
     #if both: 
