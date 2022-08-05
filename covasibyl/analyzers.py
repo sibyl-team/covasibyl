@@ -102,11 +102,12 @@ class QuarantineSaver(Analyzer):
             assert len(self.quar_day[day]) == 0
 
 class ContactsSaver(Analyzer):
-    def __init__(self,quar_factor=1., printout=False, *args, **kwargs):
+    def __init__(self,quar_factor=1., iso_factor=0.1, printout=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
         self.contacts_saved = None
         self.quar_factor=quar_factor
+        self.iso_factor=iso_factor
     
         self._warned = defaultdict(lambda: False)
 
@@ -122,7 +123,7 @@ class ContactsSaver(Analyzer):
 
         tested_iso = cvu.true(sim.people.diagnosed)
         contacts_df = utils.filt_contacts_df(contacts_df,
-                tested_iso, self.iso_cts_strength, N, only_i=True)
+                tested_iso, self.iso_factor, N, only_i=True)
 
         if self.quar_factor < 1:
             ## filter the contacts for quarantined
@@ -132,6 +133,6 @@ class ContactsSaver(Analyzer):
             if len(quar_idcs) > 0:
                 msum = contacts_df["m"].sum()
                 contacts_df = utils.filt_contacts_df(contacts_df, quar_idcs, self.quar_factor, N)
-                assert conts_prev_day["m"].sum() < msum
+                assert contacts_df["m"].sum() < msum
 
         self.contacts_saved = contacts_df
