@@ -13,6 +13,7 @@ import covasim.utils as cvu
 import covasim.defaults as cvd
 
 from .tester import CovasimTester, random_all_p
+from .analyzers import ContactsSaver
 from . import utils
 
 def get_symp_probs(sim, or_symp_prob, pdf=None):
@@ -122,6 +123,7 @@ class RankTester(cvi.Intervention):
         self.extra_stats_fn = kwargs["stats_extra_fn"] if "stats_extra_fn" in kwargs else None
         self._warned = defaultdict(lambda: False)
 
+
     def _init_for_sim(self, sim):
         """
         initialize the ranker
@@ -134,7 +136,19 @@ class RankTester(cvi.Intervention):
 
         self.tester = CovasimTester(sim, contain=self.mitigate)
         self._warned = defaultdict(lambda: False)
+        analyzers = sim.get_analyzers()
 
+        self.contacts_saver= None
+        for an in analyzers:
+            if isinstance(an, ContactsSaver):
+                self.contacts_saver = an
+                break
+        if self.contacts_saver is None:
+            cs = ContactsSaver(quar_factor=self.quar_factor,
+                iso_factor=self.iso_cts_strength)
+            sim["analyzers"].append(cs)
+            self.contacts_saver = cs
+        
         #self.iso_cts_strength
         self.extra_stats = {}
 
@@ -247,6 +261,19 @@ class RankTester(cvi.Intervention):
                 conts_prev_day = utils.filt_contacts_df(conts_prev_day, quar_idcs, self.quar_factor, N)
                 if len(quar_idcs) > 0:
                     assert conts_prev_day["m"].sum() < msum
+            saver = self.contacts_saver
+            assert saver.contacts_saved is not None
+
+            diff= utils.cts_df_to_sparse(saver.contacts_saved) - utils.cts_df_to_sparse(conts_prev_day)
+            assert diff.sum() == 0
+
+            if not self._warned["sim"]:
+                print("Analyzers: ", sim["analyzers"])
+                print("Interventions: ", sim["interventions"])
+
+                self._warned["sim"] = True
+        
+        
         
         FIND_INFECTED = sim.people.infectious.sum() > 0 or sim.people.exposed.sum()>0
         FIND_INFECTED = FIND_INFECTED and HAVE_CONTS
