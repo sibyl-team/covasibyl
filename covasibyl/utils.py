@@ -60,6 +60,9 @@ def _cts_mat_to_df(c, idcs=["i","j","m"]):
     cend = c.tocoo()
     return pd.DataFrame(dict(zip(idcs,(cend.row, cend.col, cend.data))) )
 
+def cts_df_to_sparse(cts):
+    return sp.coo_matrix((cts["m"], (cts["i"], cts["j"]))).tocsr()
+
 def filt_contacts_df(cts, idcs, multipl, N, only_i=False):
     mat  = sp.coo_matrix((cts["m"], (cts["i"], cts["j"]))).tocsr()
     d = np.ones(N)
