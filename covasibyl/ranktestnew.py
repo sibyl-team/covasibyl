@@ -271,7 +271,7 @@ class RankTester(cvi.Intervention):
                 print("Cannot run ranker, we don't have contacts.")
                 ACTIVE = False
         else:
-            warnings.warn("Epidemy ended, returning random ranking")
+            self._warn_once("epi_end","Epidemy ended, returning random ranking")
             rank_algo = list(zip(np.arange(N),np.random.rand(N)))
         
         if self._check_epi_tests and ACTIVE:
