@@ -118,6 +118,8 @@ class RankTester(cvi.Intervention):
         self._check_epi_tests = kwargs["check_epi_tests"] if "check_epi_tests" in kwargs else False
         self.only_random = kwargs["only_random_tests"] if "only_random_tests" in kwargs else False
         self.only_symptom = only_sympt
+        if self.only_random and self.only_symptom:
+            raise ValueError("Cannot give both 'only random' and 'only symptomatic' tests. Decide one of them.")
 
         self.extra_stats_fn = kwargs["stats_extra_fn"] if "stats_extra_fn" in kwargs else None
         self._warned = defaultdict(lambda: False)
