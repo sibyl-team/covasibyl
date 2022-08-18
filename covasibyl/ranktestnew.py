@@ -118,6 +118,8 @@ class RankTester(cvi.Intervention):
         self._check_epi_tests = kwargs["check_epi_tests"] if "check_epi_tests" in kwargs else False
         self.only_random = kwargs["only_random_tests"] if "only_random_tests" in kwargs else False
         self.only_symptom = only_sympt
+        if self.only_random and self.only_symptom:
+            raise ValueError("Cannot give both 'only random' and 'only symptomatic' tests. Decide one of them.")
 
         self.extra_stats_fn = kwargs["stats_extra_fn"] if "stats_extra_fn" in kwargs else None
         self._warned = defaultdict(lambda: False)
@@ -271,7 +273,7 @@ class RankTester(cvi.Intervention):
                 print("Cannot run ranker, we don't have contacts.")
                 ACTIVE = False
         else:
-            warnings.warn("Epidemy ended, returning random ranking")
+            self._warn_once("epi_end","Epidemy ended, returning random ranking")
             rank_algo = list(zip(np.arange(N),np.random.rand(N)))
         
         if self._check_epi_tests and ACTIVE:
@@ -312,7 +314,7 @@ class RankTester(cvi.Intervention):
                 self._warn_once("random_tests", "Doing random tests instead of sympt+ranker")
                 ## get random tests
                 test_indcs_all = utils.get_random_indcs_test(sim, self.n_tests, randgen)
-
+                
                 ## save true number of infected found
                 day_stats["nt_rand"] = true_inf[test_indcs_all].sum()
 
@@ -361,10 +363,9 @@ class RankTester(cvi.Intervention):
                     #test_inds = []
                     test_indcs_all = test_inds_symp
                 ## concatenate tests
-                print(f"nt_rand: {len(test_inds_symp)}", end=" ")
                 day_stats["nt_rand"] = len(test_inds_symp)
                 ## END NO RANDOM TESTS
-
+            print(f"nt_rand: {day_stats['nt_rand']}", end=" ")
             
             #print("", end=" ")
             day_stats["auc_I"] = auc_inf
