@@ -143,6 +143,9 @@ class RankTester(cvi.Intervention):
     def set_extra_stats_fn(self,func):
         self.extra_stats_fn = func
 
+    @staticmethod
+    def _comp_flag():
+        return "rksym"
 
     def to_json(self):
         '''
@@ -402,7 +405,7 @@ class RankTester(cvi.Intervention):
             if not self.only_symptom:
                 assert len(np.unique(test_indcs_all)) == self.n_tests
             #print("Num unique tests: ",len(np.unique(test_indcs_all)))
-            
+
             ## stats -> check among those that I have found from symptomatic testing
         else:
             ### RANKER IS PASSIVE, only giving symptomatics
