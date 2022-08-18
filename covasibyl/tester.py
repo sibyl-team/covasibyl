@@ -247,6 +247,7 @@ class CovasimTester:
         return True
 
     def _do_random_tests(self,sim, n_tests):
+        ## Old method for dev purpose
         if not self._warned["rand_tests"]:
             warnings.warn("Doing random tests!!! ONLY USE FOR DEVELOPMENT PURPOSE")
             self._warned["rand_tests"] = True

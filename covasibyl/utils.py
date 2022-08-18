@@ -154,10 +154,12 @@ def gamma_pdf_full(x, alfa, beta ):
     return beta**alfa*x**(alfa-1)*np.exp(-1*beta*x)/gamma_f(alfa)
 
 
-def get_random_indcs_test(sim, n_tests, rng):
-    today = sim.t
+def get_random_indcs_test(sim, n_tests, rng, exclude_diag=True):
     people = sim.people
     probs = np.ones(len(people.age))
+    if exclude_diag:
+        idx_diagnosed = np.where(sim.people.diagnosed)[0]
+        probs[idx_diagnosed] = 0.
     probs /= probs.sum()
 
     inds_test = choose_w_rng(probs=probs, n=n_tests, unique=True, 
