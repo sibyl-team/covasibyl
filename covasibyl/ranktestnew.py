@@ -61,7 +61,7 @@ class RankTester(cvi.Intervention):
                 label,
                 num_tests,
                 symp_test_p=0.5,
-                quar_test_p=0.,
+                quar_test_p=None,
                 start_day=0, end_day=None,
                 sensitivity=1.0, specificity:float=1.0, 
                 loss_prob=0., test_delay=0,
@@ -89,7 +89,7 @@ class RankTester(cvi.Intervention):
         self.test_delay  = test_delay
         self.start_day   = start_day
         self.end_day     = end_day
-        self.quar_test_p   = quar_test_p # Probability of testing people in quarantine
+        #self.quar_test_p   = quar_test_p # Probability of testing people in quarantine in the sympt stage
         self.quar_policy = quar_policy if quar_policy else 'start'
         # If provided, get the distribution's pdf -- this returns an empty dict if None is supplied
         self.test_pdf = cvu.get_pdf(**sc.mergedicts(swab_delay))
@@ -191,16 +191,22 @@ class RankTester(cvi.Intervention):
             warnings.warn(message)
             self._warned[key] = True
 
-    def _set_symp_quar_prob(self, test_probs, sim):
+    def _set_symp_quar_prob(self, test_probs, sim, symp_p=None):
         """
         set symp prob in the test_probs array
         """
         # Symptomatics test
-        symp_probs = get_symp_probs(sim, self.symp_test, self.test_pdf)
+        if symp_p is None:
+            symp_p = self.symp_test
+        symp_probs = get_symp_probs(sim, symp_p, self.test_pdf)
         symp_inds  = cvu.true(sim.people.symptomatic)
         # Handle quarantine testing
-        quar_test_inds = cvi.get_quar_inds(self.quar_policy, sim)
-        test_probs[quar_test_inds] = self.quar_test_p
+        ## THESE ARE CURRENTLY IN QUARANTINE (OR STARTING THE QUARANTINE)
+        ## WE DON'T CARE
+        """if self.quar_test_p is not None:
+            quar_test_inds = cvi.get_quar_inds(self.quar_policy, sim)
+            test_probs[quar_test_inds] = self.quar_test_p"""
+        # setting the prob of symps AFTER the Q -> if someone is sympt won't be affected
         test_probs[symp_inds] = symp_probs
 
     def _remove_diagnosed_prob(self, test_probs, sim):
@@ -208,7 +214,27 @@ class RankTester(cvi.Intervention):
         already_diagnosed = sim.people.diagnosed
         idx_diagnosed = cvu.true(already_diagnosed)
         test_probs[idx_diagnosed] = 0.
+    
+    #@staticmethod
+    def draw_probs_symptom(self,sim, randgen, sympt_p):
+        N = len(sim.people.age)
+        test_probs = np.zeros(N)
+        # Symptomatics test
+        self._set_symp_quar_prob(test_probs, sim, symp_p=sympt_p)
 
+        ## remove already diagnosed
+        self._remove_diagnosed_prob(test_probs, sim)
+        test_inds_symp = cvu.true(
+                    randgen.random(len(test_probs)) < test_probs
+                )
+        if len(test_inds_symp) > self.n_tests:
+            self._warn_once("test_sympt",
+                f"Symptom tests exceeded capacity: got {len(test_inds_symp)} people to test > {self.n_tests}")
+            randgen.shuffle(test_inds_symp)
+            test_inds_symp = test_inds_symp[:self.n_tests]
+        
+        return test_probs, test_inds_symp
+    
 
     def apply(self, sim):
         day = sim.t
@@ -217,7 +243,7 @@ class RankTester(cvi.Intervention):
             self._init_for_sim(sim)
             self.delayed_init = False
 
-        ACTIVE = (day >= self.start_day)
+        USE_RANKING = (day >= self.start_day)
         """if not ACTIVE:
             ## observations from the previous day
             self.daily_obs = []"""
@@ -255,7 +281,7 @@ class RankTester(cvi.Intervention):
 
         obs_ranker = self.tester.get_results(day-1) ## get the correct obs for the ranker
         if self.debug:
-            print(f"Day {day}, active: {ACTIVE}; n_obs: {len(obs_ranker):d}, num days conts: {len(self.days_cts)}", )
+            print(f"Day {day}, active: {USE_RANKING}; n_obs: {len(obs_ranker):d}, num days conts: {len(self.days_cts)}", )
 
         print("Day: ", sim.t)
         ### get rank from the algorithm
@@ -269,30 +295,23 @@ class RankTester(cvi.Intervention):
             rank_algo = self.ranker.rank(day, conts_ranker, obs_ranker, self.ranker_data)
         elif not HAVE_CONTS:
             print("No contacts to give")
-            if ACTIVE:
+            if USE_RANKING:
                 print("Cannot run ranker, we don't have contacts.")
-                ACTIVE = False
+                USE_RANKING = False
         else:
             self._warn_once("epi_end","Epidemy ended, returning random ranking")
             rank_algo = list(zip(np.arange(N),np.random.rand(N)))
         
-        if self._check_epi_tests and ACTIVE:
+        if self._check_epi_tests and USE_RANKING:
             ### random test
             self._warn_once("check_epi","Doing random tests for DEV purpose")
             ### Disable normal intervention
-            ACTIVE = False
+            USE_RANKING = False
             self.tester._do_random_tests(sim, n_tests=(self.n_tests_algo_day+self.n_tests_rand))
 
         
 
-        if ACTIVE:
-            
-            test_probs = np.zeros(N)
-            # Symptomatics test
-            self._set_symp_quar_prob(test_probs, sim)
-
-            ## remove already diagnosed
-            self._remove_diagnosed_prob(test_probs, sim)
+        if USE_RANKING:
             
             true_inf = sim.people.infectious
             true_EI = sim.people.exposed # includes I
@@ -305,9 +324,7 @@ class RankTester(cvi.Intervention):
             print("day {}: AUC_rk(I,EI): ({:4.3f},{:4.3f}), ".format(day, auc_inf, auc_EI), end="")
             ## Do rand tests
             randgen = self.tester.randstate
-            #n_tests_rnd = min(self.n_tests_rand, (test_probs!=0).sum())# Don't try to test more people than have nonzero testing probability
-            """test_inds_rnd = utils.choose_w_rng(probs=test_probs, n=n_tests_rnd, unique=True, 
-                rng=self.tester.randstate) # Choose who actually tests"""
+
             true_inf_rk = 0
             accu_rk = 0
             if self.only_random:
@@ -320,6 +337,11 @@ class RankTester(cvi.Intervention):
 
             else:
                 ## NO RANDOM TESTS
+                test_probs = np.zeros(N)
+                # Symptomatics test
+                self._set_symp_quar_prob(test_probs, sim)
+                ## remove already diagnosed
+                self._remove_diagnosed_prob(test_probs, sim)
                 test_inds_symp = cvu.true(
                     randgen.random(len(test_probs)) < test_probs
                 )
@@ -380,13 +402,19 @@ class RankTester(cvi.Intervention):
             if not self.only_symptom:
                 assert len(np.unique(test_indcs_all)) == self.n_tests
             #print("Num unique tests: ",len(np.unique(test_indcs_all)))
-            ## this tests the individuals today
-            self.tester.run_tests(sim, test_indcs_all,
-                        test_sensitivity=self.sensitivity,
-                        test_specificity=self.specificity,
-                        loss_prob=self.loss_prob, test_delay=self.test_delay)
-
+            
             ## stats -> check among those that I have found from symptomatic testing
+        else:
+            ### RANKER IS PASSIVE, only giving symptomatics
+            probs, test_indcs_all = self.draw_probs_symptom(sim, self.tester.randstate, self.symp_test)
+            print(f"n tests sympt: {len(test_indcs_all)}")
+            day_stats["nt_rand"] = len(test_indcs_all)
+            
+        ## this tests the individuals today
+        self.tester.run_tests(sim, test_indcs_all,
+                    test_sensitivity=self.sensitivity,
+                    test_specificity=self.specificity,
+                    loss_prob=self.loss_prob, test_delay=self.test_delay)
 
         if self._obs_source:
             if self.tester._observe_sources(sim):
@@ -408,7 +436,7 @@ class RankTester(cvi.Intervention):
             for s,k in enumerate(["S","I","R"]):
                 day_stats["test_"+k] = stats[s]
             
-            if not ACTIVE:
+            if not USE_RANKING:
                 print(f"day {sim.t}")
         #elif self.verbose:
         #    print(f"no obs, t {sim.t}")
@@ -416,7 +444,7 @@ class RankTester(cvi.Intervention):
 
         free_birds = len(utils.check_free_birds(sim.people))
         inf_quar = (sim.people.infectious & sim.people.quarantined).sum()
-        if ACTIVE and self.verbose:
+        if USE_RANKING and self.verbose:
             print("free {:d}, nQ: {:d}".format(free_birds, sim.people.quarantined.sum()))
         diagnosed_today = (sim.people.date_diagnosed == sim.t) | (self.tester.date_diagnosed == sim.t)
 
