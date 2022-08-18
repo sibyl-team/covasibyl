@@ -314,7 +314,7 @@ class RankTester(cvi.Intervention):
                 self._warn_once("random_tests", "Doing random tests instead of sympt+ranker")
                 ## get random tests
                 test_indcs_all = utils.get_random_indcs_test(sim, self.n_tests, randgen)
-
+                
                 ## save true number of infected found
                 day_stats["nt_rand"] = true_inf[test_indcs_all].sum()
 
@@ -363,10 +363,9 @@ class RankTester(cvi.Intervention):
                     #test_inds = []
                     test_indcs_all = test_inds_symp
                 ## concatenate tests
-                print(f"nt_rand: {len(test_inds_symp)}", end=" ")
                 day_stats["nt_rand"] = len(test_inds_symp)
                 ## END NO RANDOM TESTS
-
+            print(f"nt_rand: {day_stats['nt_rand']}", end=" ")
             
             #print("", end=" ")
             day_stats["auc_I"] = auc_inf
