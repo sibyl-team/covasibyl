@@ -9,6 +9,8 @@ from covasim.interventions import (Intervention, preprocess_day, process_daily_d
                 get_quar_inds)
 
 from .tester import CovasimTester
+from .utils import choose_w_rng, choose_probs
+from .test_utils  import find_ili_inds, get_symp_probs
 
 class TestProbNum(Intervention):
     '''
@@ -44,8 +46,8 @@ class TestProbNum(Intervention):
     '''
 
     def __init__(self, daily_tests, symp_test_p=0.5, quar_test=100.0, quar_policy=None, subtarget=None,
-                 ili_prev=None, sensitivity=1.0, loss_prob=0, test_delay=0,
-                 start_day=0, end_day=None, swab_delay=None, exp_test_inf=False, **kwargs):
+                 ili_prev=None, sensitivity=1.0, loss_prob=0, test_delay=0, contain=True,
+                 start_day=0, end_day=None, swab_delay=None, **kwargs):
         super().__init__(**kwargs) # Initialize the Intervention object
         self.daily_tests = daily_tests # Should be a list of length matching time
         self.symp_test_p   = symp_test_p   # Set probability of testing symptomatics
@@ -60,8 +62,8 @@ class TestProbNum(Intervention):
         self.end_day     = end_day
         self.pdf         = cvu.get_pdf(**sc.mergedicts(swab_delay)) # If provided, get the distribution's pdf -- this returns an empty dict if None is supplied
         
-        self.custom_tester = exp_test_inf
-
+        self.mtester = None
+        self.mitigate = contain
 
     def initialize(self, sim):
         ''' Fix the dates and number of tests '''
@@ -77,13 +79,27 @@ class TestProbNum(Intervention):
         self.daily_tests = process_daily_data(self.daily_tests, sim, self.start_day)
         self.ili_prev    = process_daily_data(self.ili_prev,    sim, self.start_day)
 
-        if self.custom_tester:
-            self.custom_tester = CovasimTester(sim, contain=True)
-        else:
-            self.custom_tester = None
-
+        self.mtester = CovasimTester(sim, contain=self.mitigate)
+        
         return
+    def _make_symp_probs_all(self,sim, start_day):
+        symp_inds = cvu.true(sim.people.symptomatic)
+        symp_prob = get_symp_probs(sim, self.symp_test_p, self.pdf)
+        
+        # Define symptomatics, accounting for ILI prevalence
+        ili_inds = find_ili_inds(sim, self.ili_prev, symp_inds, start_day)
 
+        # Define asymptomatics: those who neither have COVID symptoms nor ILI symptoms
+        #asymp_inds = np.setdiff1d(np.setdiff1d(np.arange(pop_size), symp_inds), ili_inds)
+        diag_inds = cvu.true(sim.people.diagnosed)
+
+        test_probs = np.zeros(sim['pop_size']) # Begin by assigning equal testing probability to everyone
+        test_probs[symp_inds]       = symp_prob            # People with symptoms (true positive)
+        test_probs[ili_inds]        = self.symp_test_p ## Ili inds, can be 0
+
+        test_probs[diag_inds] = 0.0 # People who are diagnosed don't test
+
+        return test_probs
 
     def apply(self, sim):
 
@@ -106,6 +122,8 @@ class TestProbNum(Intervention):
         else:
             return
 
+        randstate = self.mtester.randstate
+
         # With dynamic rescaling, we have to correct for uninfected people outside of the population who would test
         if sim.rescale_vec[t]/sim['pop_scale'] < 1: # We still have rescaling to do
             in_pop_tot_prob = test_probs.sum()*sim.rescale_vec[t] # Total "testing weight" of people in the subsampled population
@@ -116,26 +134,10 @@ class TestProbNum(Intervention):
         ## test for symptomatics first
         # Calculate test probabilities for people with symptoms
         symp_inds = cvu.true(sim.people.symptomatic)
-        symp_prob = self.symp_test_p
-        if self.pdf:
-            symp_time = cvd.default_int(t - sim.people.date_symptomatic[symp_inds]) # Find time since symptom onset
-            inv_count = (np.bincount(symp_time)/len(symp_time)) # Find how many people have had symptoms of a set time and invert
-            count = np.nan * np.ones(inv_count.shape)
-            count[inv_count != 0] = 1/inv_count[inv_count != 0]
-            symp_prob = np.ones(len(symp_time))
-            inds = 1 > (symp_time*self.symp_prob)
-            symp_prob[inds] = self.symp_prob/(1-symp_time[inds]*self.symp_prob)
-            symp_prob = self.pdf.pdf(symp_time) * symp_prob * count[symp_time]
+        symp_prob = get_symp_probs(sim, self.symp_test_p, self.pdf)
         
         # Define symptomatics, accounting for ILI prevalence
-        pop_size = sim['pop_size']
-        ili_inds = []
-        if self.ili_prev is not None:
-            rel_t = t - start_day
-            if rel_t < len(self.ili_prev):
-                n_ili = int(self.ili_prev[rel_t] * pop_size)  # Number with ILI symptoms on this day
-                ili_inds = cvu.choose(pop_size, n_ili) # Give some people some symptoms, assuming that this is independent of COVID symptomaticity...
-                ili_inds = np.setdiff1d(ili_inds, symp_inds)
+        ili_inds = find_ili_inds(sim, self.ili_prev, symp_inds, start_day)
 
         # Define asymptomatics: those who neither have COVID symptoms nor ILI symptoms
         #asymp_inds = np.setdiff1d(np.setdiff1d(np.arange(pop_size), symp_inds), ili_inds)
@@ -144,14 +146,16 @@ class TestProbNum(Intervention):
 
         test_probs = np.zeros(sim['pop_size']) # Begin by assigning equal testing probability to everyone
         test_probs[symp_inds]       = symp_prob            # People with symptoms (true positive)
-        test_probs[ili_inds]        = self.symp_test_p
+        test_probs[ili_inds]        = self.symp_test_p ## Ili inds, can be 0
 
         test_probs[diag_inds] = 0.0 # People who are diagnosed don't test
         #print(f"Symp probs: {symp_prob}, nposstest={(test_probs > 0).sum()}")
 
-        test_inds_sym = cvu.true(cvu.binomial_arr(test_probs))
+        #test_inds_sym = cvu.true(cvu.binomial_arr(test_probs))
+
+        test_inds_sym = choose_probs(test_probs,randstate)
         if len(test_inds_sym) > n_tests_all:
-            np.random.shuffle(test_inds_sym)
+            randstate.shuffle(test_inds_sym)
             test_inds_sym = test_inds_sym[:n_tests_all]
 
         
@@ -179,17 +183,17 @@ class TestProbNum(Intervention):
             if ntp < ntests_rand:
                print(f"Can only test {ntp} people, asking for {ntests_rand}") 
                ntests_rand = ntp
-            test_inds_rnd = cvu.choose_w(probs=test_probs_rnd, n=ntests_rand, unique=True)
+            test_inds_rnd = choose_w_rng(probs=test_inds_rnd, n=ntests_rand, unique=True,
+                                        rng=randstate)
+            #cvu.choose_w(probs=test_probs_rnd, n=ntests_rand, unique=True)
             ntrueI_rand = len(cvu.itruei(sim.people.infectious, test_inds_rnd))
             test_inds = np.concatenate((test_inds, test_inds_rnd))
         
 
         # Now choose who gets tested and test them
-        if self.custom_tester:
-            self.custom_tester.run_tests(sim, test_inds, test_sensitivity=self.sensitivity,
+    
+        self.mtester.run_tests(sim, test_inds, test_sensitivity=self.sensitivity,
                 test_specificity=1, loss_prob=self.loss_prob, test_delay=self.test_delay)
 
-        else:
-            sim.people.test(test_inds, test_sensitivity=self.sensitivity, loss_prob=self.loss_prob, test_delay=self.test_delay)
 
         return test_inds
