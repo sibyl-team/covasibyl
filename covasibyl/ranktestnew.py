@@ -14,28 +14,9 @@ import covasim.defaults as cvd
 
 from .tester import CovasimTester, random_all_p
 from . import utils
+from . import test_utils as tuti
 
-def get_symp_probs(sim, or_symp_prob, pdf=None):
-    """
-    Parse symp probab as covasim
-    """
-    t = sim.t
-    # Find probablity for symptomatics to be tested
-    symp_inds  = cvu.true(sim.people.symptomatic)
-    symp_prob = or_symp_prob
-    if pdf:
-        symp_time = cvd.default_int(t - sim.people.date_symptomatic[symp_inds]) # Find time since symptom onset
-        inv_count = (np.bincount(symp_time)/len(symp_time)) # Find how many people have had symptoms of a set time and invert
-        count = np.nan * np.ones(inv_count.shape)
-        count[inv_count != 0] = 1/inv_count[inv_count != 0]
-        symp_prob = np.ones(len(symp_time))
-        inds = 1 > (symp_time*or_symp_prob)
-        symp_prob[inds] = or_symp_prob/(1-symp_time[inds]*or_symp_prob)
-        symp_prob = pdf.pdf(symp_time) * symp_prob * count[symp_time]
-
-    return symp_prob
-
-def _calc_aucs(true_inf, true_EI, rank):
+def calc_aucs(true_inf, true_EI, rank):
     if(true_inf.sum() > 0):
         fpr, tpr, _ = roc_curve(true_inf, rank.to_numpy())
         auc_inf = auc(fpr,tpr)  #if real_inf > 0 else np.nan
@@ -201,8 +182,9 @@ class RankTester(cvi.Intervention):
         # Symptomatics test
         if symp_p is None:
             symp_p = self.symp_test
-        symp_probs = get_symp_probs(sim, symp_p, self.test_pdf)
+        symp_probs = tuti.get_symp_probs(sim, symp_p, self.test_pdf)
         symp_inds  = cvu.true(sim.people.symptomatic)
+        ## TODO: Add ili symptom prevalence
         # Handle quarantine testing
         ## THESE ARE CURRENTLY IN QUARANTINE (OR STARTING THE QUARANTINE)
         ## WE DON'T CARE
@@ -323,7 +305,7 @@ class RankTester(cvi.Intervention):
             rank_df = pd.DataFrame(rank_algo, columns=["idx","rank"]).set_index("idx")
             rank_proc = rank_df["rank"].sort_index()
             ### compute AUC immediately
-            auc_inf, auc_EI = _calc_aucs(true_inf, true_EI, rank_proc)
+            auc_inf, auc_EI = calc_aucs(true_inf, true_EI, rank_proc)
             print("day {}: AUC_rk(I,EI): ({:4.3f},{:4.3f}), ".format(day, auc_inf, auc_EI), end="")
             ## Do rand tests
             randgen = self.tester.randstate
@@ -333,7 +315,7 @@ class RankTester(cvi.Intervention):
             if self.only_random:
                 self._warn_once("random_tests", "Doing random tests instead of sympt+ranker")
                 ## get random tests
-                test_indcs_all = utils.get_random_indcs_test(sim, self.n_tests, randgen)
+                test_indcs_all = tuti.get_random_indcs_test(sim, self.n_tests, randgen)
                 
                 ## save true number of infected found
                 day_stats["nt_rand"] = true_inf[test_indcs_all].sum()

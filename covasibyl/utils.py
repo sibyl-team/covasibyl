@@ -103,6 +103,23 @@ def check_free_birds(people):
     free_idx = (people.infectious & np.logical_not(people.diagnosed) ).nonzero()[0]
     return free_idx
 
+def choose_n_rng(max_n:int, n:int, rng):
+    '''
+    Choose a subset of items (e.g., people) without replacement.
+
+    Args:
+        max_n (int): the total number of items
+        n (int): the number of items to choose
+        rng : RandomState generator, optional
+
+    **Example**::
+
+        choices = cv.choose(5, 2) # choose 2 out of 5 people with equal probability (without repeats)
+    '''
+    if rng is None:
+        rng = np.random
+    return rng.choice(max_n, n, replace=False)
+
 def choose_w_rng(probs, n, unique=True, rng=None): # No performance gain from Numba
     '''
     Choose n items (e.g. people), each with a probability from the distribution probs.
@@ -150,19 +167,24 @@ def n_binomial(prob, n, rng=None):
         rng = np.random
     return rng.random(n) < prob
 
+def choose_probs(probs: np.ndarray, rng=None):
+    """
+    Random sampling of implicit indices, according to the probability probs
+    Equivalent to series of Bernoulli random trials
+    
+    This method saves random numbers by extracting all zeros out of the probability
+
+    Args:
+        probs (np.ndarray): probabilities
+        rng (numpy RandomState, optional): random generator. Defaults to the default random number generator.
+    """
+    if rng is None:
+        rng = np.random
+    nz = np.where(probs)[0]
+    pp = probs[probs>0]
+    idcs = nz[rng.random(len(pp)) < pp]
+
+    return idcs
+
 def gamma_pdf_full(x, alfa, beta ):
     return beta**alfa*x**(alfa-1)*np.exp(-1*beta*x)/gamma_f(alfa)
-
-
-def get_random_indcs_test(sim, n_tests, rng, exclude_diag=True):
-    people = sim.people
-    probs = np.ones(len(people.age))
-    if exclude_diag:
-        idx_diagnosed = np.where(sim.people.diagnosed)[0]
-        probs[idx_diagnosed] = 0.
-    probs /= probs.sum()
-
-    inds_test = choose_w_rng(probs=probs, n=n_tests, unique=True, 
-            rng=rng)
-
-    return inds_test
