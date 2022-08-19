@@ -64,7 +64,7 @@ def cts_df_to_sparse(cts):
     return sp.coo_matrix((cts["m"], (cts["i"], cts["j"]))).tocsr()
 
 def filt_contacts_df(cts, idcs, multipl, N, only_i=False):
-    mat  = sp.coo_matrix((cts["m"], (cts["i"], cts["j"]))).tocsr()
+    mat  = sp.coo_matrix((cts["m"], (cts["i"], cts["j"])), shape=(N,N)).tocsr()
     d = np.ones(N)
     d[idcs] = multipl
     filt = sp.diags(d, format="csr")
@@ -89,7 +89,7 @@ def filt_contacts_mult(cts, weight:np.ndarray, N:int, only_i=False):
     Returns:
         dataframe of contacts reweighted
     """
-    mat  = sp.coo_matrix((cts["m"], (cts["i"], cts["j"]))).tocsr()
+    mat  = sp.coo_matrix((cts["m"], (cts["i"], cts["j"])),shape=(N,N)).tocsr()
     filt = sp.diags(weight, format="csr")
     if not only_i:
         mat = mat.dot(filt) ##djj

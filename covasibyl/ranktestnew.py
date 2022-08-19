@@ -55,6 +55,7 @@ class RankTester(cvi.Intervention):
                 verbose=True,
                 mitigate=True,
                 only_sympt=False,
+                adoption_fraction=1.,
                 **kwargs
                 ):
 
@@ -78,6 +79,7 @@ class RankTester(cvi.Intervention):
         self.iso_cts_strength = iso_cts_strength
         ## same for the quarantine, but with both infector and infected
         self.quar_factor = quar_factor
+        self.adopt_frac=adoption_fraction
         self.debug = debug
 
         self.contacts_day = None
@@ -114,6 +116,14 @@ class RankTester(cvi.Intervention):
         self.N = pars["pop_size"]
         T = pars["n_days"] +1
         self.ranker.init(self.N, T)
+        seed = pars["rand_seed"]
+        rng = np.random.RandomState(np.random.PCG64(seed))
+        if self.adopt_frac < 1:
+            print(f"Adoption fraction is: {self.adopt_frac}")
+            self.has_app = (rng.random(self.N) < self.adopt_frac).astype(float)
+            assert self.has_app.sum() < self.N
+        else:
+            self.has_app = np.ones(self.N)
 
         self.tester = CovasimTester(sim, contain=self.mitigate)
         self._warned = defaultdict(lambda: False)
@@ -248,6 +258,11 @@ class RankTester(cvi.Intervention):
         HAVE_CONTS = conts_prev_day is not None
         ## process old contacts
         if HAVE_CONTS:
+            ## remove contacts for people that do not have the app
+            if self.has_app.sum() < self.N:
+                conts_prev_day = utils.filt_contacts_mult(
+                        conts_prev_day, weight=self.has_app, N=N, only_i=False
+                )
             ## remove contacts that are isolated (tested)
             tested_iso = cvu.true(sim.people.diagnosed)
             conts_prev_day = utils.filt_contacts_df(conts_prev_day,
