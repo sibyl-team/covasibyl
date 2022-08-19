@@ -47,7 +47,7 @@ class TestProbNum(Intervention):
 
     def __init__(self, daily_tests, symp_test_p=0.5, quar_test=100.0, quar_policy=None, subtarget=None,
                  ili_prev=None, sensitivity=1.0, specificity=1.0, loss_prob=0, test_delay=0, contain=True,
-                 start_day=0, end_day=None, swab_delay=None, **kwargs):
+                 start_day=0, end_day=None, swab_delay=None, init_sympt=False, **kwargs):
         super().__init__(**kwargs) # Initialize the Intervention object
         self.daily_tests = daily_tests # Should be a list of length matching time
         self.symp_test_p   = symp_test_p   # Set probability of testing symptomatics
@@ -61,6 +61,7 @@ class TestProbNum(Intervention):
         self.test_delay  = test_delay
         self.start_day   = start_day
         self.end_day     = end_day
+        self.init_sympt  = init_sympt
         self.pdf         = cvu.get_pdf(**sc.mergedicts(swab_delay)) # If provided, get the distribution's pdf -- this returns an empty dict if None is supplied
         
         self.mtester = None
@@ -120,15 +121,19 @@ class TestProbNum(Intervention):
         day_stats["true_I_rk"] = 0
 
         if t < start_day:
-            ## No intervention yet, observe only symptomatics
-            test_probs = self._make_symp_probs_all(sim, start_day)
-            test_inds_sym = choose_probs(test_probs,randstate)
-            if len(test_inds_sym) > n_tests_all:
-                randstate.shuffle(test_inds_sym)
-                test_inds_sym = test_inds_sym[:n_tests_all]
-            ### Test
-            
-            self._run_tests_def(sim, test_inds_sym)
+            if self.init_sympt:
+                ## No intervention yet, observe only symptomatics
+                test_probs = self._make_symp_probs_all(sim, start_day)
+                test_inds_sym = choose_probs(test_probs,randstate)
+                if len(test_inds_sym) > n_tests_all:
+                    randstate.shuffle(test_inds_sym)
+                    test_inds_sym = test_inds_sym[:n_tests_all]
+                ### Test
+                self._run_tests_def(sim, test_inds_sym)
+
+                ntrue_I = len(cvu.itruei(sim.people.symptomatic, test_inds_sym))
+                day_stats['nI_symp'] = ntrue_I
+                self.hist.append(day_stats)
             return
         elif end_day is not None and t > end_day:
             return
