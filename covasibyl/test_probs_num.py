@@ -120,6 +120,26 @@ class TestProbNum(Intervention):
         day_stats = dict(day=t)
         day_stats["true_I_rk"] = 0
 
+        if end_day is not None and t > end_day:
+            return
+
+        # Check that there are still tests
+        rel_t = t - start_day
+        if rel_t < len(self.daily_tests):
+            n_tests_all = sc.randround(self.daily_tests[rel_t]/sim.rescale_vec[t]) # Correct for scaling that may be applied by rounding to the nearest number of tests
+            if not (n_tests_all and np.isfinite(n_tests_all)): # If there are no tests today, abort early
+                return
+            else:
+                sim.results['new_tests'][t] += n_tests_all
+        else:
+            return
+        # With dynamic rescaling, we have to correct for uninfected people outside of the population who would test
+        if sim.rescale_vec[t]/sim['pop_scale'] < 1: # We still have rescaling to do
+            in_pop_tot_prob = test_probs.sum()*sim.rescale_vec[t] # Total "testing weight" of people in the subsampled population
+            out_pop_tot_prob = sim.scaled_pop_size - sim.rescale_vec[t]*sim['pop_size'] # Find out how many people are missing and assign them each weight 1
+            in_frac = in_pop_tot_prob/(in_pop_tot_prob + out_pop_tot_prob) # Fraction of tests which should fall in the sample population
+            n_tests_all = sc.randround(n_tests_all*in_frac) # Recompute the number of tests
+
         if t < start_day:
             if self.init_sympt:
                 ## No intervention yet, observe only symptomatics
@@ -135,26 +155,7 @@ class TestProbNum(Intervention):
                 day_stats['nI_symp'] = ntrue_I
                 self.hist.append(day_stats)
             return
-        elif end_day is not None and t > end_day:
-            return
 
-        # Check that there are still tests
-        rel_t = t - start_day
-        if rel_t < len(self.daily_tests):
-            n_tests_all = sc.randround(self.daily_tests[rel_t]/sim.rescale_vec[t]) # Correct for scaling that may be applied by rounding to the nearest number of tests
-            if not (n_tests_all and np.isfinite(n_tests_all)): # If there are no tests today, abort early
-                return
-            else:
-                sim.results['new_tests'][t] += n_tests_all
-        else:
-            return
-
-        # With dynamic rescaling, we have to correct for uninfected people outside of the population who would test
-        if sim.rescale_vec[t]/sim['pop_scale'] < 1: # We still have rescaling to do
-            in_pop_tot_prob = test_probs.sum()*sim.rescale_vec[t] # Total "testing weight" of people in the subsampled population
-            out_pop_tot_prob = sim.scaled_pop_size - sim.rescale_vec[t]*sim['pop_size'] # Find out how many people are missing and assign them each weight 1
-            in_frac = in_pop_tot_prob/(in_pop_tot_prob + out_pop_tot_prob) # Fraction of tests which should fall in the sample population
-            n_tests_all = sc.randround(n_tests_all*in_frac) # Recompute the number of tests
 
         ## test for symptomatics first
         # Calculate test probabilities for people with symptoms
@@ -209,11 +210,11 @@ class TestProbNum(Intervention):
             if ntp < ntests_rand:
                print(f"Can only test {ntp} people, asking for {ntests_rand}") 
                ntests_rand = ntp
-            test_inds_rnd = choose_w_rng(probs=test_inds_rnd, n=ntests_rand, unique=True,
+            inds_test_rnd = choose_w_rng(probs=test_probs_rnd, n=ntests_rand, unique=True,
                                         rng=randstate)
             #cvu.choose_w(probs=test_probs_rnd, n=ntests_rand, unique=True)
-            ntrueI_rand = len(cvu.itruei(sim.people.infectious, test_inds_rnd))
-            test_inds = np.concatenate((test_inds, test_inds_rnd))
+            ntrueI_rand = len(cvu.itruei(sim.people.infectious, inds_test_rnd))
+            test_inds = np.concatenate((test_inds, inds_test_rnd))
             day_stats["nI_ttq"] = ntrueI_rand
         
         # Run tests
