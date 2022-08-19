@@ -46,7 +46,7 @@ class TestProbNum(Intervention):
     '''
 
     def __init__(self, daily_tests, symp_test_p=0.5, quar_test=100.0, quar_policy=None, subtarget=None,
-                 ili_prev=None, sensitivity=1.0, loss_prob=0, test_delay=0, contain=True,
+                 ili_prev=None, sensitivity=1.0, specificity=1.0, loss_prob=0, test_delay=0, contain=True,
                  start_day=0, end_day=None, swab_delay=None, **kwargs):
         super().__init__(**kwargs) # Initialize the Intervention object
         self.daily_tests = daily_tests # Should be a list of length matching time
@@ -56,6 +56,7 @@ class TestProbNum(Intervention):
         self.subtarget   = subtarget  # Set any other testing criteria
         self.ili_prev    = ili_prev     # Should be a list of length matching time or a float or a dataframe
         self.sensitivity = sensitivity
+        self.specifity = specificity
         self.loss_prob   = loss_prob
         self.test_delay  = test_delay
         self.start_day   = start_day
@@ -80,6 +81,8 @@ class TestProbNum(Intervention):
         self.ili_prev    = process_daily_data(self.ili_prev,    sim, self.start_day)
 
         self.mtester = CovasimTester(sim, contain=self.mitigate)
+
+        self.hist =[]
         
         return
     def _make_symp_probs_all(self,sim, start_day):
@@ -101,12 +104,31 @@ class TestProbNum(Intervention):
 
         return test_probs
 
+    def _run_tests_def(self, sim, test_inds):
+        ### Helper function to shorten the testing
+        self.mtester.run_tests(sim, test_inds, test_sensitivity=self.sensitivity,
+                test_specificity=self.specifity, loss_prob=self.loss_prob, test_delay=self.test_delay)
+
     def apply(self, sim):
 
         t = sim.t
         start_day = get_day(self.start_day, self, sim)
         end_day   = get_day(self.end_day,   self, sim)
+
+        randstate = self.mtester.randstate
+        day_stats = dict(day=t)
+        day_stats["true_I_rk"] = 0
+
         if t < start_day:
+            ## No intervention yet, observe only symptomatics
+            test_probs = self._make_symp_probs_all(sim, start_day)
+            test_inds_sym = choose_probs(test_probs,randstate)
+            if len(test_inds_sym) > n_tests_all:
+                randstate.shuffle(test_inds_sym)
+                test_inds_sym = test_inds_sym[:n_tests_all]
+            ### Test
+            
+            self._run_tests_def(sim, test_inds_sym)
             return
         elif end_day is not None and t > end_day:
             return
@@ -121,8 +143,6 @@ class TestProbNum(Intervention):
                 sim.results['new_tests'][t] += n_tests_all
         else:
             return
-
-        randstate = self.mtester.randstate
 
         # With dynamic rescaling, we have to correct for uninfected people outside of the population who would test
         if sim.rescale_vec[t]/sim['pop_scale'] < 1: # We still have rescaling to do
@@ -164,6 +184,7 @@ class TestProbNum(Intervention):
         inf_diag = (sim.people.symptomatic & sim.people.diagnosed)
         #print(f"day {sim.t}, test inf: {ntrue_I} tot inf free: {sim.people.symptomatic.sum() - inf_diag.sum()}")
         test_inds = test_inds_sym
+        day_stats["nI_symp"] = ntrue_I
 
         if ntests_rand > 0:
             ## do random tests
@@ -188,12 +209,12 @@ class TestProbNum(Intervention):
             #cvu.choose_w(probs=test_probs_rnd, n=ntests_rand, unique=True)
             ntrueI_rand = len(cvu.itruei(sim.people.infectious, test_inds_rnd))
             test_inds = np.concatenate((test_inds, test_inds_rnd))
+            day_stats["nI_ttq"] = ntrueI_rand
         
-
-        # Now choose who gets tested and test them
+        # Run tests
+        self._run_tests_def(sim, test_inds)
     
-        self.mtester.run_tests(sim, test_inds, test_sensitivity=self.sensitivity,
-                test_specificity=1, loss_prob=self.loss_prob, test_delay=self.test_delay)
-
+    
+        self.hist.append(day_stats)
 
         return test_inds
