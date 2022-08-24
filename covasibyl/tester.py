@@ -132,6 +132,9 @@ class CovasimTester:
         people = sim.people
         inds = np.unique(inds)
         num_tests = len(inds)
+        if num_tests == 0:
+            ### Do nothing
+            return
         ## check that there are no diagnosed (eg positive-tested) people
         diagnosed = people.diagnosed[inds] | self.diagnosed[inds]
         if diagnosed.sum() > 0:

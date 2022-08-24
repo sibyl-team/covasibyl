@@ -406,9 +406,12 @@ class RankTester(cvi.Intervention):
             ## stats -> check among those that I have found from symptomatic testing
         else:
             ### RANKER IS PASSIVE, only giving symptomatics
-            probs, test_indcs_all = self.draw_probs_symptom(sim, self.tester.randstate, self.symp_test)
-            print(f"n tests sympt: {len(test_indcs_all)}")
-            day_stats["nt_rand"] = len(test_indcs_all)
+            ## If we aren't asked to give only random tests
+            test_indcs_all =[]
+            if not self.only_random:
+                probs, test_indcs_all = self.draw_probs_symptom(sim, self.tester.randstate, self.symp_test)
+                print(f"n tests sympt: {len(test_indcs_all)}")
+                day_stats["nt_rand"] = len(test_indcs_all)
             
         ## this tests the individuals today
         self.tester.run_tests(sim, test_indcs_all,
