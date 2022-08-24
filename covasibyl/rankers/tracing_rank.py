@@ -110,14 +110,18 @@ class TracingRanker(AbstractRanker):
         # check that t=t_day in daily_contacts and t=t_day-1 in daily_obs
         #check_inputs(t_day, daily_contacts, daily_obs)
         # append daily_contacts and daily_obs
+        
+
         daily_transmissions = contacts_rec_to_csr(self.N, daily_contacts, self.lamb)
         self.transmissions.append(daily_transmissions)
         self.observations += [
             dict(i=i, s=s, t_test=t_test) for i, s, t_test in daily_obs
         ]
+        ## Trick to run ranking always
+        tau_today = min(self.tau, t_day)
         # scores given by mean field run from t-delta to t
         scores = ranking_tracing_faster(
-            t_day, self.transmissions, self.observations, self.tau, self.rng
+            t_day, self.transmissions, self.observations, tau_today, self.rng
         )
         # convert to list [(index, value), ...]
         rank = get_rank(scores)
