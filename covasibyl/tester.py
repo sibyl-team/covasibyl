@@ -130,11 +130,15 @@ class CovasimTester:
             test_delay (int): number of days before test results are ready
         '''
         people = sim.people
+        today = sim.t
         inds = np.unique(inds)
         num_tests = len(inds)
         if num_tests == 0:
             ### Do nothing
             return
+        
+        ## register with covasim
+        sim.results['new_tests'][today] += num_tests
         ## check that there are no diagnosed (eg positive-tested) people
         diagnosed = people.diagnosed[inds] | self.diagnosed[inds]
         if diagnosed.sum() > 0:
@@ -144,7 +148,7 @@ class CovasimTester:
         people.date_tested[inds] = sim.t # Only keep the last time they tested
 
         
-        today = sim.t
+
         
         ## lost tests
         not_lost = utils.n_binomial(1.0-loss_prob, len(inds))
@@ -163,7 +167,6 @@ class CovasimTester:
         write_tests_state(people, today_tests, inds_test)
 
         ## check susceptibles
-        # exposed people test as susceptible
         ## exposed people remain exposed when infectious on covasim
         is_E = (people.exposed &(~people.infectious))
         susc_inds = cvu.itruei((people.susceptible), inds_test)
