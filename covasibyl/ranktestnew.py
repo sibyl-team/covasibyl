@@ -1,3 +1,4 @@
+from abc import ABCMeta, abstractmethod
 from cmath import log
 from collections import defaultdict
 from tabnanny import verbose
@@ -28,8 +29,13 @@ def calc_aucs(true_inf, true_EI, rank):
         auc_EI = np.nan
     return auc_inf, auc_EI
 
+def _remove_diagnosed_prob(test_probs, sim):
+    ## remove already diagnosed
+    already_diagnosed = sim.people.diagnosed
+    idx_diagnosed = cvu.true(already_diagnosed)
+    test_probs[idx_diagnosed] = 0.
 
-class RankTester(cvi.Intervention):
+class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
     """
     Class to test people with information on
     both symptomatic, quarantined and using the ranker
@@ -40,7 +46,6 @@ class RankTester(cvi.Intervention):
     def __init__(self,
                 ranker,
                 label,
-                num_tests,
                 symp_test_p=0.5,
                 quar_test_p=None,
                 start_day=0, end_day=None,
@@ -62,7 +67,7 @@ class RankTester(cvi.Intervention):
         super().__init__(label="Mitigation: "+label)
 
         self.ranker = ranker
-        self.n_tests = num_tests
+        #self.n_tests = num_tests
         self.symp_test = symp_test_p # Probability of testing symptomatics
         self.sensitivity = sensitivity
         self.specificity = specificity
@@ -146,8 +151,8 @@ class RankTester(cvi.Intervention):
             JSON-serializable representation (typically a dict, but could be anything else)
         '''
         which = self.__class__.__name__
-        pars = {"label": self.input_args["label"], "ranker": self.ranker.__class__.__name__,
-         "n_tests":self.n_tests}
+        pars = {"label": self.input_args["label"], "ranker": self.ranker.__class__.__name__}
+        # "n_tests":self.n_tests}
         output = dict(which=which, pars=pars)
         return output
 
@@ -204,11 +209,6 @@ class RankTester(cvi.Intervention):
         # setting the prob of symps AFTER the Q -> if someone is sympt won't be affected
         test_probs[symp_inds] = symp_probs
 
-    def _remove_diagnosed_prob(self, test_probs, sim):
-        ## remove already diagnosed
-        already_diagnosed = sim.people.diagnosed
-        idx_diagnosed = cvu.true(already_diagnosed)
-        test_probs[idx_diagnosed] = 0.
     
     #@staticmethod
     def draw_probs_symptom(self,sim, randgen, sympt_p):
@@ -218,15 +218,11 @@ class RankTester(cvi.Intervention):
         self._set_symp_quar_prob(test_probs, sim, symp_p=sympt_p)
 
         ## remove already diagnosed
-        self._remove_diagnosed_prob(test_probs, sim)
+        _remove_diagnosed_prob(test_probs, sim)
         test_inds_symp = cvu.true(
                     randgen.random(len(test_probs)) < test_probs
                 )
-        if len(test_inds_symp) > self.n_tests:
-            self._warn_once("test_sympt",
-                f"Symptom tests exceeded capacity: got {len(test_inds_symp)} people to test > {self.n_tests}")
-            randgen.shuffle(test_inds_symp)
-            test_inds_symp = test_inds_symp[:self.n_tests]
+        test_inds_symp = self.limit_symp_tests(test_inds_symp, randgen)
         
         return test_probs, test_inds_symp
     
@@ -249,10 +245,6 @@ class RankTester(cvi.Intervention):
 
         contacts_df = utils.get_contacts_day(sim.people)
         self.days_cts.append(day)
-
-        
-        #contacts_day = [(i,j,day, val) for i,j,val in zip(conts_m.row, conts_m.col, conts_m.data)]
-        #contacts_day = conts_m[["i","j","day","m"]].to_records(index=False)
 
         conts_prev_day = self.conts_prev_day
         HAVE_CONTS = conts_prev_day is not None
@@ -291,7 +283,6 @@ class RankTester(cvi.Intervention):
             conts_prev_day["day"] = day
             conts_ranker = conts_prev_day[["i","j","day","m"]].to_records(index=False)
 
-
             rank_algo = self.ranker.rank(day, conts_ranker, obs_ranker, self.ranker_data)
         elif not HAVE_CONTS:
             print("No contacts to give")
@@ -308,8 +299,6 @@ class RankTester(cvi.Intervention):
             ### Disable normal intervention
             USE_RANKING = False
             self.tester._do_random_tests(sim, n_tests=(self.n_tests_algo_day+self.n_tests_rand))
-
-        
 
         if USE_RANKING:
             
@@ -330,7 +319,7 @@ class RankTester(cvi.Intervention):
             if self.only_random:
                 self._warn_once("random_tests", "Doing random tests instead of sympt+ranker")
                 ## get random tests
-                test_indcs_all = tuti.get_random_indcs_test(sim, self.n_tests, randgen)
+                test_indcs_all = self.make_random_tests(sim, randgen)
                 
                 ## save true number of infected found
                 day_stats["nt_rand"] = true_inf[test_indcs_all].sum()
@@ -341,22 +330,17 @@ class RankTester(cvi.Intervention):
                 # Symptomatics test
                 self._set_symp_quar_prob(test_probs, sim)
                 ## remove already diagnosed
-                self._remove_diagnosed_prob(test_probs, sim)
+                _remove_diagnosed_prob(test_probs, sim)
                 test_inds_symp = cvu.true(
                     randgen.random(len(test_probs)) < test_probs
                 )
-                if len(test_inds_symp) > self.n_tests:
-                    self._warn_once("test_sympt",
-                        f"Symptom tests exceeded capacity: got {len(test_inds_symp)} people to test > {self.n_tests}")
-                    randgen.shuffle(test_inds_symp)
-                    test_inds_symp = test_inds_symp[:self.n_tests]
+                test_inds_symp = self.limit_symp_tests(test_inds_symp, randgen)
             
-                n_tests_algo = self.n_tests - len(test_inds_symp)
                 if self.only_symptom:
                     self._warn_once("only_sympt", "Only symptomatic testing")
                     ## Don't run algo
-                
-                if not self.only_symptom and n_tests_algo > 0:
+                    test_indcs_all = test_inds_symp
+                else:
                     ### Ranker tests
 
                     # add rand tests indices to exclude testing
@@ -364,26 +348,24 @@ class RankTester(cvi.Intervention):
                     ## get from rank
                     valid = set(range(N)).difference(idx_diagnosed).difference(test_inds_symp)
                     rank_good = rank_proc[list(valid)].sort_values(ascending=False)
-    
+
                     if len(rank_good)==0:
                         warnings.warn("No tests from ranker, test_probs: {}".format(sum(test_probs>0)))
-                    test_inds = rank_good[:n_tests_algo].index.to_numpy()
-                    ## accuracy
+
+                    test_inds_rk = self.choose_tests_ranker(rank_good, test_inds_symp)
                     
-                    true_inf_rk = true_inf[test_inds].sum()
-                
-                    accu_rk = true_inf_rk / min(len(test_inds), true_inf.sum())
-                    if self.verbose:
-                        print("n_I_rk: {}, accu {:.2%}".format(true_inf_rk, accu_rk) ,
-                        end=" ")
-                    test_indcs_all = np.concatenate((test_inds_symp, test_inds))
+                    ## accuracy
+                    ntest_rk = len(test_inds_rk)
+                    if ntest_rk > 0:
+                        true_inf_rk = true_inf[test_inds_rk].sum()
+                        
+                        accu_rk = true_inf_rk / min(ntest_rk, true_inf.sum())
+                        if self.verbose:
+                            print("n_I_rk: {}, accu {:.2%}".format(true_inf_rk, accu_rk) ,
+                            end=" ")
+                    ### pull together the tests
+                    test_indcs_all = np.concatenate((test_inds_symp, test_inds_rk))
 
-                else:
-                    #auc_inf = np.nan
-                    #auc_EI = np.nan
-
-                    #test_inds = []
-                    test_indcs_all = test_inds_symp
                 ## concatenate tests
                 day_stats["nt_rand"] = len(test_inds_symp)
                 ## END NO RANDOM TESTS
@@ -399,8 +381,8 @@ class RankTester(cvi.Intervention):
             if self.extra_stats_fn:
                     self.extra_stats[day] = self.extra_stats_fn(sim,rank_proc,test_indcs_all)
             ### test actually
-            if not self.only_symptom:
-                assert len(np.unique(test_indcs_all)) == self.n_tests
+            #if not self.only_symptom:
+            #    assert len(np.unique(test_indcs_all)) == self.n_tests
             #print("Num unique tests: ",len(np.unique(test_indcs_all)))
 
             ## stats -> check among those that I have found from symptomatic testing
@@ -475,3 +457,128 @@ class RankTester(cvi.Intervention):
         ### delete the ranker to save memory
         self.ranker = None
         del self.ranker_data["logger"]
+    
+    @abstractmethod
+    def choose_tests_ranker(self, ranking, test_inds_symp):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def limit_symp_tests(self, test_inds, randgen):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def make_random_tests(self, sim, randgen):
+        raise NotImplementedError()
+
+class RankTester(BaseRankTester):
+
+    def __init__(self,
+                ranker,
+                label,
+                num_tests,
+                symp_test_p=0.5,
+                quar_test_p=None,
+                start_day=0, end_day=None,
+                sensitivity=1.0, specificity:float=1.0, 
+                loss_prob=0., test_delay=0,
+                iso_cts_strength = 0.1,
+                quar_factor=1.,
+                logger=None,
+                debug=False,
+                verbose=True,
+                mitigate=True,
+                only_sympt=False,
+                adoption_fraction=1.,
+                **kwargs
+                ):
+        super().__init__(ranker,label=label,
+        symp_test_p=symp_test_p,
+        quar_test_p=quar_test_p,
+        start_day=start_day,
+        end_day=end_day,
+        sensitivity=sensitivity, specificity=specificity,
+        loss_prob=loss_prob, test_delay=test_delay,
+        iso_cts_strength=iso_cts_strength,
+        quar_factor=quar_factor,
+        logger=logger,
+        debug=debug,
+        verbose=verbose,
+        mitigate=mitigate,
+        only_sympt=only_sympt,
+        adoption_fraction=adoption_fraction,
+        **kwargs
+        )
+        self.n_tests = num_tests
+    
+    def limit_symp_tests(self, test_inds, randgen, ):
+        if len(test_inds) > self.n_tests:
+            self._warn_once("test_sympt",
+                f"Symptom tests exceeded capacity: got {len(test_inds)} people to test > {self.n_tests}")
+            randgen.shuffle(test_inds)
+            test_inds = test_inds[:self.n_tests]
+        return test_inds
+
+    def choose_tests_ranker(self, ranking, test_inds_symp):
+        n_tests_algo = self.n_tests - len(test_inds_symp)
+        if n_tests_algo > 0:
+            test_inds_rk = ranking[:n_tests_algo].index.to_numpy()
+        else:
+            test_inds_rk = np.empty((0,),dtype=np.int_)
+        
+        return test_inds_rk
+    
+    def make_random_tests(self, sim, randgen):
+        return tuti.get_random_indcs_test(sim, self.n_tests, randgen)
+
+class ProbRankTester(BaseRankTester):
+
+    def __init__(self,
+                ranker,
+                label,
+                p_contain,
+                symp_test_p=0.5,
+                quar_test_p=None,
+                start_day=0, end_day=None,
+                sensitivity=1.0, specificity:float=1.0, 
+                loss_prob=0., test_delay=0,
+                iso_cts_strength = 0.1,
+                quar_factor=1.,
+                logger=None,
+                debug=False,
+                verbose=True,
+                mitigate=True,
+                only_sympt=False,
+                adoption_fraction=1.,
+                **kwargs
+                ):
+        super().__init__(ranker,label=label,
+        symp_test_p=symp_test_p,
+        quar_test_p=quar_test_p,
+        start_day=start_day,
+        end_day=end_day,
+        sensitivity=sensitivity, specificity=specificity,
+        loss_prob=loss_prob, test_delay=test_delay,
+        iso_cts_strength=iso_cts_strength,
+        quar_factor=quar_factor,
+        logger=logger,
+        debug=debug,
+        verbose=verbose,
+        mitigate=mitigate,
+        only_sympt=only_sympt,
+        adoption_fraction=adoption_fraction,
+        **kwargs
+        )
+        self.p_contain = p_contain
+
+    def limit_symp_tests(self, test_inds, randgen):
+        ## do nothing
+        return test_inds
+    
+    def choose_tests_ranker(self, ranking, test_inds_symp):
+        
+        tests_corr = ranking[ranking > self.p_contain]
+        
+        return tests_corr.index.to_numpy()
+
+    def make_random_tests(self, sim, randgen):
+        raise ValueError("Cannot do random tests without fixed number of tests")
