@@ -107,8 +107,10 @@ class TestProbNum(Intervention):
 
     def _run_tests_def(self, sim, test_inds):
         ### Helper function to shorten the testing
+        t = sim.t
         self.mtester.run_tests(sim, test_inds, test_sensitivity=self.sensitivity,
                 test_specificity=self.specifity, loss_prob=self.loss_prob, test_delay=self.test_delay)
+
 
     def apply(self, sim):
 
@@ -129,8 +131,8 @@ class TestProbNum(Intervention):
             n_tests_all = sc.randround(self.daily_tests[rel_t]/sim.rescale_vec[t]) # Correct for scaling that may be applied by rounding to the nearest number of tests
             if not (n_tests_all and np.isfinite(n_tests_all)): # If there are no tests today, abort early
                 return
-            else:
-                sim.results['new_tests'][t] += n_tests_all
+            #else:
+            #    sim.results['new_tests'][t] += n_tests_all
         else:
             return
         # With dynamic rescaling, we have to correct for uninfected people outside of the population who would test
