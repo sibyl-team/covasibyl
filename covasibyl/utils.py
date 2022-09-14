@@ -98,6 +98,33 @@ def filt_contacts_mult(cts, weight:np.ndarray, N:int, only_i=False):
 
     return _cts_mat_to_df(mat)
 
+def sel_contacts_idx_df(cts, idcs, N:int, which="or"):
+    """
+    Filter contacts by index
+
+    Args:
+        cts (dict-like, pandas Dataframe): the contacts, i,j,m
+        idcs (np.ndarray, list): indices to keep
+        N (int): number of individuals
+        which (string, optional): the operation to perform
+
+    Returns:
+        dataframe of contacts reweighted
+    """
+    mat  = sp.coo_matrix((cts["m"], (cts["i"], cts["j"])),shape=(N,N)).tocsr()
+    v = np.zeros(N)
+    v[idcs] = 1.
+    filt = sp.diags(v, format="csr")
+    mright = mat.dot(filt)
+    
+    if which == "or":
+        mleft = filt.dot(mat)
+        mat = mright + mleft - filt.dot(mright)
+    else:
+        raise ValueError("Invalid value for filter")
+
+    return _cts_mat_to_df(mat)
+
 
 def check_free_birds(people):
     free_idx = (people.infectious & np.logical_not(people.diagnosed) ).nonzero()[0]
