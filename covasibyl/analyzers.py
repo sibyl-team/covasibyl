@@ -1,4 +1,5 @@
 from collections import defaultdict
+from time import time
 import warnings
 
 import numpy as np
@@ -6,6 +7,7 @@ import matplotlib.pyplot as pl
 
 import sciris as sc
 from covasim.analysis import Analyzer
+from covasim.interventions import get_day
 from covasibyl import utils
 import covasim.utils as cvu
 
@@ -102,12 +104,16 @@ class QuarantineSaver(Analyzer):
             assert len(self.quar_day[day]) == 0
 
 class ContactsSaver(Analyzer):
-    def __init__(self,quar_factor=1., iso_factor=0.1, printout=False, *args, **kwargs):
+    def __init__(self,quar_factor=1., iso_factor=0.1, start_day=0, end_day=None, save_only="",printout=False, every_day=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
         self.contacts_saved = None
         self.quar_factor=quar_factor
         self.iso_factor=iso_factor
+        self.save_only = save_only
+        self.everyday = every_day
+        self.start_day=start_day
+        self.end_day=end_day
     
         self._warned = defaultdict(lambda: False)
 
@@ -115,14 +121,44 @@ class ContactsSaver(Analyzer):
         if not self._warned[key]:
             warnings.warn(message)
             self._warned[key] = True
+    
+    def initialize(self, sim=None):
+
+        found_rktest = False
+        if sim is not None:
+            intervs = sim["interventions"]
+            for i in intervs:
+                try:
+                    self.app_usage = i.get_app_usage()
+                    found_rktest = True
+                    break
+                except AttributeError:
+                    pass
+        if not found_rktest:
+            self._warn_once("app_usage","Could not get app usage (cannot find intervention?)\n\tSaving all contacts.")
+            self.app_usage = np.ones(sim.pars["pop_size"])
+        return super().initialize(sim)
 
     def apply(self, sim):
-
+        t = sim.t
+        start_day = get_day(self.start_day, self, sim)
+        end_day   = get_day(self.end_day,   self, sim)
+        if t < start_day:
+            return
+        elif end_day is not None and t > end_day:
+            return
+        
+        t0 = time()
         N = len(sim.people.sex)
-        contacts_df = utils.get_contacts_day(sim.people)
+        cts_df = utils.get_contacts_day(sim.people)
+        if self.app_usage.sum() < N:
+            ## remove contacts that do not have app
+            cts_df = utils.filt_contacts_mult(cts_df, self.app_usage,
+            N, only_i=False) 
+        
 
         tested_iso = cvu.true(sim.people.diagnosed)
-        contacts_df = utils.filt_contacts_df(contacts_df,
+        cts_df = utils.filt_contacts_df(cts_df,
                 tested_iso, self.iso_factor, N, only_i=True)
 
         if self.quar_factor < 1:
@@ -131,8 +167,25 @@ class ContactsSaver(Analyzer):
             quar_idcs = cvu.true(sim.people.quarantined)
 
             if len(quar_idcs) > 0:
-                msum = contacts_df["m"].sum()
-                contacts_df = utils.filt_contacts_df(contacts_df, quar_idcs, self.quar_factor, N)
-                assert contacts_df["m"].sum() < msum
+                msum = cts_df["m"].sum()
+                cts_df = utils.filt_contacts_df(cts_df, quar_idcs, self.quar_factor, N)
+                assert cts_df["m"].sum() < msum
 
-        self.contacts_saved = contacts_df
+        ## filter by state
+        if self.save_only=="EI":
+            exp_i_idc=cvu.true(sim.people.exposed)
+            cts_df = utils.sel_contacts_idx_df(cts_df, exp_i_idc, N,which="or")
+        elif self.save_only!="":
+            self._warn_once("stat_save",f"Saving string {self.save_only} not recognized, saving all contacts by state")
+
+        if self.everyday:
+            day = sim.t
+            if self.contacts_saved is None:
+                self.contacts_saved = {}
+            cts_df["day"]= day
+            self.contacts_saved[day] = cts_df.to_records(index=False)
+        else:
+            self.contacts_saved = cts_df
+        
+        t_take=time() - t0
+        print(f"Saved contacts in {t_take:4.3f} s")

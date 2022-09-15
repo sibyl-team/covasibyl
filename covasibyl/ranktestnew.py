@@ -139,6 +139,12 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
     def set_extra_stats_fn(self,func):
         self.extra_stats_fn = func
 
+    def get_app_usage(self):
+        if not self.initialized:
+            raise ValueError("Not initialized")
+        
+        return self.has_app.copy()
+
     @staticmethod
     def _comp_flag():
         return "rksym"
@@ -170,7 +176,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         
     
     def initialize(self, sim=None):
-        super().initialize(sim)
+        
         if sim is None:
             self.delayed_init = True
         else:
@@ -184,6 +190,8 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         self.hist = []
         self.days_cts = []
         self.conts_prev_day = None
+
+        super().initialize(sim)
     
     def _warn_once(self, key:str, message:str):
         if not self._warned[key]:
