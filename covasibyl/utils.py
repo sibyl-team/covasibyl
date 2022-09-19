@@ -53,7 +53,7 @@ def get_day_contacts_mat(people, exclude_lays=[], to_df=True):
     else:
         return c
 
-def _cts_mat_to_df(c, idcs=["i","j","m"]):
+def cts_mat_to_df(c, idcs=["i","j","m"]):
     """
     Transform sparse contact matrix into dataframe of contacts
     """
@@ -73,9 +73,9 @@ def filt_contacts_df(cts, idcs, multipl, N, only_i=False):
     #if both: 
     mat = filt.dot(mat) #dii
 
-    return _cts_mat_to_df(mat)
+    return cts_mat_to_df(mat)
 
-def filt_contacts_mult(cts, weight:np.ndarray, N:int, only_i=False):
+def filt_contacts_mult(cts, weight:np.ndarray, N:int, only_i=False, return_df=True):
     """
     Filter contacts by multiplying the contacts value by a 
     factor dependent on the index
@@ -95,8 +95,10 @@ def filt_contacts_mult(cts, weight:np.ndarray, N:int, only_i=False):
         mat = mat.dot(filt) ##djj
     #if both: 
     mat = filt.dot(mat) #dii
-
-    return _cts_mat_to_df(mat)
+    if return_df:
+        return cts_mat_to_df(mat)
+    else:
+        return mat
 
 def sel_contacts_idx_df(cts, idcs, N:int, which="or"):
     """
@@ -123,7 +125,7 @@ def sel_contacts_idx_df(cts, idcs, N:int, which="or"):
     else:
         raise ValueError("Invalid value for filter")
 
-    return _cts_mat_to_df(mat)
+    return cts_mat_to_df(mat)
 
 
 def check_free_birds(people):
