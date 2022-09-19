@@ -137,6 +137,11 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         self.extra_stats = {}
 
     def set_extra_stats_fn(self,func):
+        """
+        Set the function used to save extra statistics
+        
+        signature: func(sim, rank, tests)
+        """
         self.extra_stats_fn = func
 
     def get_app_usage(self):

@@ -110,9 +110,11 @@ class GreedyRanker(AbstractRanker):
             obs_df = obs_df[obs_df.s != 0] # just infected
         t0 = time.time()
         if self.sec_neigh:
-            rank_greedy = run_greedy_sec_neigh(self, obs_df, t_day, contacts_df, self.N, tau = self.tau, lamb = self.lamb,verbose=False) 
+            rank_greedy = run_greedy_sec_neigh(self, obs_df, t_day, contacts_df, self.N, tau = self.tau, 
+            lamb = self.lamb, verbose=False) 
         else:
-            rank_greedy = run_greedy(obs_df, t_day, contacts_df, self.N, self.rng, tau = self.tau, verbose=False, debug=self.debug)
+            rank_greedy = run_greedy(obs_df, t_day, contacts_df, self.N, self.rng, tau = self.tau, 
+                verbose=False, debug=self.debug)
         tgre=time.time() - t0
         print(f"t_greedy_tot: {tgre:6.3f}")
 
@@ -143,7 +145,8 @@ def run_greedy(observ, T:int, contacts, N, rng, noise = 1e-3, tau = TAU_INF, ver
     #idx_I_assumed = np.setdiff1d(idx_I, idx_I_at_T)
 
     #idx_S_anyT = observ[(observ['s'] == 0) & (observ['t_test'] < T)]['i'] # observed S at time < T
-    idx_S = observ[(observ['s'] == 0) & (observ['t_test'] == T)]['i'].to_numpy() # observed S at T -> put them at the tail of the ranking
+    # observed S at T -> put them at the tail of the ranking
+    idx_S = observ[(observ['s'] == 0) & (observ['t_test'] == T)]['i'].to_numpy() 
 
     idx_alli = contacts['i'].unique()
     idx_allj = contacts['j'].unique()
@@ -177,7 +180,7 @@ def run_greedy(observ, T:int, contacts, N, rng, noise = 1e-3, tau = TAU_INF, ver
         print("! Assuming that if i is infected at t < T (and not observed as R), it is still infected at T !", file=sys.stderr)
 
     #Score = pd.Series(np.zeros(N)) #dict([(i, 0) for i in range(N)])
-    score_arr = np.zeros(N)
+    score_arr = rng.rand(N)*noise #np.zeros(N)
     print(f"all contacts: {len(contacts)}")
     t1 = time.time()
     contacts_cut = contacts[(contacts["i"].isin(idx_to_inf)) \
@@ -202,15 +205,18 @@ def run_greedy(observ, T:int, contacts, N, rng, noise = 1e-3, tau = TAU_INF, ver
         if i in idx_non_obs:
             Score[i] = -1 + rng.rand() * noise
         if i in idx_I and i not in idx_R:
-            Score[i] = N * observ[(observ['i'] == i) & (observ['s'] == 1)]['t_test'].max()
+            Score[i] = N * observ[(observ['i'] == i) & (observ['s'] == 1)]['t_test'].max() + rng.rand()*noise
         elif i in idx_S: #at time T
             Score[i] = -1 + rng.rand() * noise
         elif i in idx_R: #anytime
             Score[i] = -1 + rng.rand() * noise
     if verbose: print("")
     #sorted_Score = list(sorted(Score.items(),key=lambda item: item[1], reverse=True))
+    if debug:
+        print(f"Len idxS: {len(idx_S)}, idxR: {len(idx_R)}")
+    #    print("Num unique vals: {}, num <0: {}".format(len(np.unique(Score)), (Score <0).sum()))
     Score = Score.sort_values(ascending=False)
-    sorted_Score = list(Score.to_dict().items())
+    sorted_Score = list(zip(Score.index,Score.values))
     tscore = time.time() - t0
     if debug: print(f"tcs_score: {tloopsc:5.3f}, tscore {tscore:5.3f}", end=" ")
     return sorted_Score
