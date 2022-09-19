@@ -47,7 +47,10 @@ class TestProbNum(Intervention):
 
     def __init__(self, daily_tests, symp_test_p=0.5, quar_test=100.0, quar_policy=None, subtarget=None,
                  ili_prev=None, sensitivity=1.0, specificity=1.0, loss_prob=0, test_delay=0, contain=True,
-                 start_day=0, end_day=None, swab_delay=None, init_sympt=False, **kwargs):
+                 start_day=0, end_day=None, swab_delay=None, init_sympt=False, 
+                 save_tests_n=0, no_rnd_tests=False,**kwargs):
+        
+        
         super().__init__(**kwargs) # Initialize the Intervention object
         self.daily_tests = daily_tests # Should be a list of length matching time
         self.symp_test_p   = symp_test_p   # Set probability of testing symptomatics
@@ -66,6 +69,10 @@ class TestProbNum(Intervention):
         
         self.mtester = None
         self.mitigate = contain
+        self.save_tests_n = save_tests_n
+        self.no_rnd_tests = no_rnd_tests
+        self.tested_idcs_rnd = None
+        
 
     def initialize(self, sim):
         ''' Fix the dates and number of tests '''
@@ -84,6 +91,7 @@ class TestProbNum(Intervention):
         self.mtester = CovasimTester(sim, contain=self.mitigate)
 
         self.hist =[]
+        self.tested_idcs_rnd = {}
         
         return
     def _make_symp_probs_all(self,sim, start_day):
@@ -212,12 +220,26 @@ class TestProbNum(Intervention):
             if ntp < ntests_rand:
                print(f"Can only test {ntp} people, asking for {ntests_rand}") 
                ntests_rand = ntp
-            inds_test_rnd = choose_w_rng(probs=test_probs_rnd, n=ntests_rand, unique=True,
+            
+            ntrueI_rand = 0 ## we'll overwrite this later
+            if not self.no_rnd_tests:
+                inds_test_rnd = choose_w_rng(probs=test_probs_rnd, n=ntests_rand, unique=True,
                                         rng=randstate)
-            #cvu.choose_w(probs=test_probs_rnd, n=ntests_rand, unique=True)
-            ntrueI_rand = len(cvu.itruei(sim.people.infectious, inds_test_rnd))
-            test_inds = np.concatenate((test_inds, inds_test_rnd))
+                #cvu.choose_w(probs=test_probs_rnd, n=ntests_rand, unique=True)
+                ntrueI_rand = len(cvu.itruei(sim.people.infectious, inds_test_rnd))
+                # add random tests to be done
+                test_inds = np.concatenate((test_inds, inds_test_rnd))
+                if self.save_tests_n>0:
+                    raise NotImplementedError("Undefined saving the tests with active random tests")
+            elif self.save_tests_n>0:
+                ## fake extraction
+                inds_test_rnd = choose_w_rng(probs=test_probs_rnd, n=self.save_tests_n, unique=True,
+                                        rng=randstate)
+
             day_stats["nI_ttq"] = ntrueI_rand
+
+            self.tested_idcs_rnd[t] = inds_test_rnd
+
         
         # Run tests
         self._run_tests_def(sim, test_inds)
