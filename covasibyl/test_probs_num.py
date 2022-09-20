@@ -1,3 +1,5 @@
+from collections import defaultdict
+import warnings
 import numpy as np
 
 import sciris as sc
@@ -9,8 +11,13 @@ from covasim.interventions import (Intervention, preprocess_day, process_daily_d
                 get_quar_inds)
 
 from .tester import CovasimTester
-from .utils import choose_w_rng, choose_probs
+from .utils import choose_w_rng
 from .test_utils  import find_ili_inds, get_symp_probs
+
+def choose_probs(test_probs, randgen):
+    return cvu.true(
+                    randgen.random(len(test_probs)) < test_probs
+                )
 
 class TestProbNum(Intervention):
     '''
@@ -72,7 +79,13 @@ class TestProbNum(Intervention):
         self.save_tests_n = save_tests_n
         self.no_rnd_tests = no_rnd_tests
         self.tested_idcs_rnd = None
-        
+        self.hist = None
+        self._warned = None
+
+    def _warn_once(self, key:str, message:str):
+        if not self._warned[key]:
+            warnings.warn(message)
+            self._warned[key] = True
 
     def initialize(self, sim):
         ''' Fix the dates and number of tests '''
@@ -92,6 +105,8 @@ class TestProbNum(Intervention):
 
         self.hist =[]
         self.tested_idcs_rnd = {}
+
+        self._warned = defaultdict(lambda: False)
         
         return
     def _make_symp_probs_all(self,sim, start_day):
@@ -101,8 +116,6 @@ class TestProbNum(Intervention):
         # Define symptomatics, accounting for ILI prevalence
         ili_inds = find_ili_inds(sim, self.ili_prev, symp_inds, start_day)
 
-        # Define asymptomatics: those who neither have COVID symptoms nor ILI symptoms
-        #asymp_inds = np.setdiff1d(np.setdiff1d(np.arange(pop_size), symp_inds), ili_inds)
         diag_inds = cvu.true(sim.people.diagnosed)
 
         test_probs = np.zeros(sim['pop_size']) # Begin by assigning equal testing probability to everyone
@@ -126,9 +139,10 @@ class TestProbNum(Intervention):
         start_day = get_day(self.start_day, self, sim)
         end_day   = get_day(self.end_day,   self, sim)
 
-        randstate = self.mtester.randstate
+        tester_rng = self.mtester.randstate
         day_stats = dict(day=t)
         day_stats["true_I_rk"] = 0
+        day_stats["n_infectious"] = sim.people.infectious.sum()
 
         if end_day is not None and t > end_day:
             return
@@ -136,7 +150,12 @@ class TestProbNum(Intervention):
         # Check that there are still tests
         rel_t = t - start_day
         if rel_t < len(self.daily_tests):
-            n_tests_all = sc.randround(self.daily_tests[rel_t]/sim.rescale_vec[t]) # Correct for scaling that may be applied by rounding to the nearest number of tests
+            if sim.rescale_vec[t] != 1:
+                self._warn_once("rescale_tests", f"Rescaling number of tests because of rescale_vec: {sim.rescale_vec[t:]}")
+                # Correct for scaling that may be applied by rounding to the nearest number of tests
+                n_tests_all = sc.randround(self.daily_tests[rel_t]/sim.rescale_vec[t])
+            else:
+                n_tests_all = self.daily_tests[rel_t]
             if not (n_tests_all and np.isfinite(n_tests_all)): # If there are no tests today, abort early
                 return
             #else:
@@ -145,6 +164,7 @@ class TestProbNum(Intervention):
             return
         # With dynamic rescaling, we have to correct for uninfected people outside of the population who would test
         if sim.rescale_vec[t]/sim['pop_scale'] < 1: # We still have rescaling to do
+            self._warn_once("rescale_probs", "Rescaling test probability with randround")
             in_pop_tot_prob = test_probs.sum()*sim.rescale_vec[t] # Total "testing weight" of people in the subsampled population
             out_pop_tot_prob = sim.scaled_pop_size - sim.rescale_vec[t]*sim['pop_size'] # Find out how many people are missing and assign them each weight 1
             in_frac = in_pop_tot_prob/(in_pop_tot_prob + out_pop_tot_prob) # Fraction of tests which should fall in the sample population
@@ -154,9 +174,10 @@ class TestProbNum(Intervention):
             if self.init_sympt:
                 ## No intervention yet, observe only symptomatics
                 test_probs = self._make_symp_probs_all(sim, start_day)
-                test_inds_sym = choose_probs(test_probs,randstate)
+                test_inds_sym = choose_probs(test_probs,tester_rng)
+                ## Limit symptomatic tests
                 if len(test_inds_sym) > n_tests_all:
-                    randstate.shuffle(test_inds_sym)
+                    tester_rng.shuffle(test_inds_sym)
                     test_inds_sym = test_inds_sym[:n_tests_all]
                 ### Test
                 self._run_tests_def(sim, test_inds_sym)
@@ -170,28 +191,18 @@ class TestProbNum(Intervention):
         ## test for symptomatics first
         # Calculate test probabilities for people with symptoms
         symp_inds = cvu.true(sim.people.symptomatic)
-        symp_prob = get_symp_probs(sim, self.symp_test_p, self.pdf)
         
         # Define symptomatics, accounting for ILI prevalence
         ili_inds = find_ili_inds(sim, self.ili_prev, symp_inds, start_day)
 
-        # Define asymptomatics: those who neither have COVID symptoms nor ILI symptoms
-        #asymp_inds = np.setdiff1d(np.setdiff1d(np.arange(pop_size), symp_inds), ili_inds)
-        diag_inds = cvu.true(sim.people.diagnosed)
-
-
-        test_probs = np.zeros(sim['pop_size']) # Begin by assigning equal testing probability to everyone
-        test_probs[symp_inds]       = symp_prob            # People with symptoms (true positive)
-        test_probs[ili_inds]        = self.symp_test_p ## Ili inds, can be 0
-
-        test_probs[diag_inds] = 0.0 # People who are diagnosed don't test
+        test_probs = self._make_symp_probs_all(sim, start_day)
         #print(f"Symp probs: {symp_prob}, nposstest={(test_probs > 0).sum()}")
 
         #test_inds_sym = cvu.true(cvu.binomial_arr(test_probs))
 
-        test_inds_sym = choose_probs(test_probs,randstate)
+        test_inds_sym = choose_probs(test_probs,tester_rng)
         if len(test_inds_sym) > n_tests_all:
-            randstate.shuffle(test_inds_sym)
+            tester_rng.shuffle(test_inds_sym)
             test_inds_sym = test_inds_sym[:n_tests_all]
 
         
@@ -205,7 +216,8 @@ class TestProbNum(Intervention):
         if ntests_rand > 0:
             ## do random tests
             test_probs_rnd = np.ones(sim.n) # Begin by assigning equal testing weight (converted to a probability) to everyone
-
+            diag_inds = cvu.true(sim.people.diagnosed)
+            symp_prob = get_symp_probs(sim, self.symp_test_p, self.pdf)
             # Handle quarantine testing
             quar_test_inds = get_quar_inds(self.quar_policy, sim)
             test_probs_rnd[quar_test_inds] *= self.quar_test
@@ -224,7 +236,7 @@ class TestProbNum(Intervention):
             ntrueI_rand = 0 ## we'll overwrite this later
             if not self.no_rnd_tests:
                 inds_test_rnd = choose_w_rng(probs=test_probs_rnd, n=ntests_rand, unique=True,
-                                        rng=randstate)
+                                        rng=tester_rng)
                 #cvu.choose_w(probs=test_probs_rnd, n=ntests_rand, unique=True)
                 ntrueI_rand = len(cvu.itruei(sim.people.infectious, inds_test_rnd))
                 # add random tests to be done
@@ -234,7 +246,7 @@ class TestProbNum(Intervention):
             elif self.save_tests_n>0:
                 ## fake extraction
                 inds_test_rnd = choose_w_rng(probs=test_probs_rnd, n=self.save_tests_n, unique=True,
-                                        rng=randstate)
+                                        rng=tester_rng)
 
             day_stats["nI_ttq"] = ntrueI_rand
 

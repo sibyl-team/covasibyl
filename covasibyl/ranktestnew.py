@@ -313,6 +313,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             USE_RANKING = False
             self.tester._do_random_tests(sim, n_tests=(self.n_tests_algo_day+self.n_tests_rand))
 
+        tester_rng = self.tester.randstate
         if USE_RANKING:
             
             true_inf = sim.people.infectious
@@ -325,14 +326,14 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             auc_inf, auc_EI = calc_aucs(true_inf, true_EI, rank_proc)
             print("day {}: AUC_rk(I,EI): ({:4.3f},{:4.3f}), ".format(day, auc_inf, auc_EI), end="")
             ## Do rand tests
-            randgen = self.tester.randstate
+            
 
             true_inf_rk = 0
             accu_rk = 0
             if self.only_random:
-                self._warn_once("random_tests", "Doing random tests instead of sympt+ranker")
+                self._warn_once("random_tests", "Doing random tests instead of symptomatics+ranker")
                 ## get random tests
-                test_indcs_all = self.make_random_tests(sim, randgen)
+                test_indcs_all = self.make_random_tests(sim, tester_rng)
                 
                 ## save true number of infected found
                 day_stats["nt_rand"] = true_inf[test_indcs_all].sum()
@@ -345,9 +346,9 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                 ## remove already diagnosed
                 _remove_diagnosed_prob(test_probs, sim)
                 test_inds_symp = cvu.true(
-                    randgen.random(len(test_probs)) < test_probs
+                    tester_rng.random(len(test_probs)) < test_probs
                 )
-                test_inds_symp = self.limit_symp_tests(test_inds_symp, randgen)
+                test_inds_symp = self.limit_symp_tests(test_inds_symp, tester_rng)
             
                 if self.only_symptom:
                     self._warn_once("only_sympt", "Only symptomatic testing")
@@ -404,7 +405,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             ## If we aren't asked to give only random tests
             test_indcs_all =[]
             if not self.only_random:
-                probs, test_indcs_all = self.draw_probs_symptom(sim, self.tester.randstate, self.symp_test)
+                probs, test_indcs_all = self.draw_probs_symptom(sim, tester_rng, self.symp_test)
                 print(f"n tests sympt: {len(test_indcs_all)}")
                 day_stats["nt_rand"] = len(test_indcs_all)
             
