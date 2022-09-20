@@ -14,14 +14,15 @@ class GreedyRanker(AbstractRanker):
                 include_S = True,
                 tau = TAU_INF,
                 sec_neigh = False,
-                lamb = 0.99):
+                lamb = 0.99,
+                debug=False):
         self.description = "class for tracing greedy inference of openABM loop"
         self.include_S = include_S
         self.tau = tau
         self.sec_neigh = sec_neigh
         self.lamb = lamb
         self.rng = np.random.RandomState(1)
-        self.debug = False
+        self.debug = debug
 
     def init(self, N, T):
         self.contacts = None
