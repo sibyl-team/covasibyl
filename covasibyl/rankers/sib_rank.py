@@ -3,7 +3,13 @@ import sib
 import numpy as np
 from .template_rank import AbstractRanker
 
-
+def make_callback(damp, maxit, tol,conv_arr):
+    def print_spec(t,e,f):
+        print(f"sib.iterate(damp={damp}):  {t}/{maxit} {e:1.3e}/{tol}", end='    \r', flush=True)
+        if e<tol:
+            ## converged
+            conv_arr[0] = True
+    return print_spec
 
 class SibRanker(AbstractRanker):
     def __init__(self,
@@ -54,6 +60,7 @@ class SibRanker(AbstractRanker):
         self.bpRs = np.full(T, np.nan)
         self.bpseeds = np.full(T, np.nan)
         self.lls = np.full(T, np.nan)
+        self.conv = np.full(T, False)
         self.all_obs = [[] for t in range(T + 1)]
         prob_i, prob_r = pi(), pr()
         self.pi = np.array([np.array(prob_i.theta) for i in range(N)])
@@ -109,12 +116,13 @@ class SibRanker(AbstractRanker):
             #    self.f.nodes[i].ht[0] = max(self.f.nodes[i].ht[0], self.pseed)
             #    self.f.nodes[i].hg[0] = max(self.f.nodes[i].hg[0], self.pseed)
                                 
-
+        conver1 = [False]
         sib.iterate(self.f, maxit=self.maxit0, damping=self.damp0, tol=self.tol, 
-                    callback=lambda t,e,f : print(f"sib.iterate(damp={self.damp0}):  {t}/{self.maxit0} {e:1.3e}/{self.tol}", end='    \r', flush=True))
+                    callback=make_callback(self.damp0, self.maxit0, self.tol, conver1))
         print()
+        conver2 = [False]
         sib.iterate(self.f, maxit=self.maxit1, damping=self.damp1, tol=self.tol, 
-                    callback=lambda t,e,f : print(f"sib.iterate(damp={self.damp1}):  {t}/{self.maxit1} {e:1.3e}/{self.tol}", end='    \r', flush=True))
+                    callback=make_callback(self.damp1, self.maxit1, self.tol, conver2))
         print()
 
         marg = np.array([sib.marginal_t(n,t_day) for n in self.f.nodes])
@@ -134,11 +142,13 @@ class SibRanker(AbstractRanker):
         self.bpRs[t_day] = bpR
         self.bpseeds[t_day] = nseed
         self.lls[t_day] = ll
+        self.conv[t_day] = conver1[0] or conver2[0]
 
         data["<I>"] = self.bpIs
         data["<IR>"] = self.bpRs + self.bpIs
         data["<seeds>"] = self.bpseeds
         data["lls"] = self.lls
+        data["converged"] = self.conv
         ###### warning
         
         # inf_prob = [[i, 1-self.f.nodes[i].bt[-1]] for i in range(self.N)]
