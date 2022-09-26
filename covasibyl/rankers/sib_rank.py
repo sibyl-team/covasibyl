@@ -1,4 +1,4 @@
-
+import time
 import sib
 import numpy as np
 from .template_rank import AbstractRanker
@@ -24,7 +24,8 @@ class SibRanker(AbstractRanker):
                 fnr = 0.0,
                 fpr = 0.0,
                 tau = None,
-                print_callback = lambda t,err,f: print(t,err)
+                print_callback = lambda t,err,f: print(t,err),
+                debug_times=False,
                 ):
         
         self.description = "class for BP inference of openABM loop"
@@ -44,6 +45,7 @@ class SibRanker(AbstractRanker):
         self.tau = tau
         self.fnr = fnr
         self.fpr = fpr
+        self.dbg_t = debug_times
 
 
     def init(self, N, T):
@@ -68,9 +70,11 @@ class SibRanker(AbstractRanker):
         self.tneg = sib.Test(1.0 - self.fnr, self.fnr, 1.0 - self.fnr)
         self.tpos = sib.Test(self.fpr, 1.0 - self.fpr, self.fpr)
 
+        self.log_times = []
+
 
     def rank(self, t_day, daily_contacts, daily_obs, data):
-
+        t0 = time.time()
         for obs in daily_obs:
             #self.f.append_observation(obs[0],obs[1],obs[2])
             if obs[1] == 1:
@@ -78,14 +82,19 @@ class SibRanker(AbstractRanker):
             else:
                 self.f.append_observation(obs[0], self.tneg, obs[2])
             self.all_obs[obs[2]] += [obs]
-
+        tobs = time.time() - t0
+        tinit = time.time()
         
         for c in daily_contacts:
             self.f.append_contact(*c)
         
+        tconts = time.time() - tinit
+        tinit = time.time()
         ### add fake obs
         for i in range(self.N):
             self.f.append_observation(i,-1,t_day)
+        
+        tfakeobs=time.time()-tinit
         
         if t_day >= self.window_length:
             t_start = t_day - self.window_length
@@ -115,16 +124,26 @@ class SibRanker(AbstractRanker):
             #for i in range(self.N):
             #    self.f.nodes[i].ht[0] = max(self.f.nodes[i].ht[0], self.pseed)
             #    self.f.nodes[i].hg[0] = max(self.f.nodes[i].hg[0], self.pseed)
-                                
+        
+        tdrop = time.time()-tinit-tfakeobs
+
         conver1 = [False]
+        tinit = time.time()
         sib.iterate(self.f, maxit=self.maxit0, damping=self.damp0, tol=self.tol, 
                     callback=make_callback(self.damp0, self.maxit0, self.tol, conver1))
         print()
+        titer1 = time.time() - tinit
         conver2 = [False]
+        tinit = time.time()
         sib.iterate(self.f, maxit=self.maxit1, damping=self.damp1, tol=self.tol, 
                     callback=make_callback(self.damp1, self.maxit1, self.tol, conver2))
+        titer2 = time.time() - tinit
         print()
 
+        
+        
+        times_all = {"obs":tobs, "contacts": tconts, "fakeobs": tfakeobs, "dropobs": tdrop, "iter1":titer1, "iter2": titer2}
+        tinit = time.time()
         marg = np.array([sib.marginal_t(n,t_day) for n in self.f.nodes])
 
         for i in range(self.N):
@@ -133,10 +152,13 @@ class SibRanker(AbstractRanker):
 
         bpS, bpI, bpR = sum(m[0] for m in marg), sum(m[1] for m in marg), sum(m[2] for m in marg)
         nseed = sum(n.bt[0] for n in self.f.nodes[:self.N])
+        times_all["margs"] = time.time() - tinit
         ll = self.f.loglikelihood()
 
         data["logger"].info(f"winBP: (S,I,R): ({bpS:.1f}, {bpI:.1f}, {bpR:.1f}), seeds: {nseed:.1f}, ll: {ll:.1f}")
-
+        if self.dbg_t:
+            data["logger"].info(f"Time taken:\n\tadd obs: {tobs:4.3e}, add contacts: {tconts:4.3e}, fake obs:{tfakeobs:4.3e}"+\
+            f"\n\ttdropobs: {tdrop:4.3e}, t iter1: {titer1:4.3e} t iter2: {titer2:4.3e}, margs: {times_all['margs']:4.3e}")
         self.bpSs[t_day] = bpS
         self.bpIs[t_day] = bpI
         self.bpRs[t_day] = bpR
