@@ -1,7 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from cmath import log
 from collections import defaultdict
-from tabnanny import verbose
 import warnings
 import numpy as np
 import pandas as pd
@@ -17,14 +15,23 @@ from .tester import CovasimTester, random_all_p
 from . import utils
 from . import test_utils as tuti
 
-def calc_aucs(true_inf, true_EI, rank):
+def calc_aucs(true_inf, true_EI, rank, idx_exclude=None):
+    rank = rank.sort_index().to_numpy()
+    if idx_exclude is not None:
+        mask = np.ones(true_EI.shape, dtype=np.bool_)
+        mask[idx_exclude] = False
+
+        true_inf = true_inf[mask]
+        true_EI = true_EI[mask]
+        rank = rank[mask]
+
     if(true_inf.sum() > 0):
-        fpr, tpr, _ = roc_curve(true_inf, rank.to_numpy())
+        fpr, tpr, _ = roc_curve(true_inf, rank)
         auc_inf = auc(fpr,tpr)  #if real_inf > 0 else np.nan
     else:
         auc_inf = np.nan
     if true_EI.sum() > 0:
-        auc_EI = roc_auc_score(true_EI, rank.to_numpy())
+        auc_EI = roc_auc_score(true_EI, rank)
     else:
         auc_EI = np.nan
     return auc_inf, auc_EI
@@ -69,6 +76,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         self.ranker = ranker
         #self.n_tests = num_tests
         self.symp_test = symp_test_p # Probability of testing symptomatics
+        ## symp_test can also be callable, signature: callable(sim)
         self.sensitivity = sensitivity
         self.specificity = specificity
         # probability of losing a test result
@@ -210,6 +218,8 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         # Symptomatics test
         if symp_p is None:
             symp_p = self.symp_test
+        if callable(symp_p):
+            symp_p = symp_p(sim)
         symp_probs = tuti.get_symp_probs(sim, symp_p, self.test_pdf)
         symp_inds  = cvu.true(sim.people.symptomatic)
         ## TODO: Add ili symptom prevalence
@@ -323,7 +333,8 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             rank_df = pd.DataFrame(rank_algo, columns=["idx","rank"]).set_index("idx")
             rank_proc = rank_df["rank"].sort_index()
             ### compute AUC immediately
-            auc_inf, auc_EI = calc_aucs(true_inf, true_EI, rank_proc)
+            auc_inf, auc_EI = calc_aucs(true_inf, true_EI, rank_proc,)
+            auc_i_ni, auc_ei_ni = calc_aucs(true_inf, true_EI, rank_proc,  idx_exclude=self.get_idx_obs_I())
             print("day {}: AUC_rk(I,EI): ({:4.3f},{:4.3f}), ".format(day, auc_inf, auc_EI), end="")
             ## Do rand tests
             
@@ -388,6 +399,8 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             #print("", end=" ")
             day_stats["auc_I"] = auc_inf
             day_stats["auc_EI"] = auc_EI
+            day_stats["auc_I_no"] = auc_i_ni
+            day_stats["auc_EI_no"] = auc_ei_ni
             day_stats["accu_I"] = accu_rk
             day_stats["true_I_rk"] = true_inf_rk
             
@@ -439,13 +452,13 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                 print(f"day {sim.t}")
         #elif self.verbose:
         #    print(f"no obs, t {sim.t}")
-        
-
         free_birds = len(utils.check_free_birds(sim.people))
         inf_quar = (sim.people.infectious & sim.people.quarantined).sum()
         if USE_RANKING and self.verbose:
             print("free {:d}, nQ: {:d}".format(free_birds, sim.people.quarantined.sum()))
         diagnosed_today = (sim.people.date_diagnosed == sim.t) | (self.tester.date_diagnosed == sim.t)
+        if callable(self.symp_test):
+            day_stats["p_symp_req"] = self.symp_test(sim)    
 
         day_stats["n_diag"] = (sim.people.diagnosed.sum())
         #self.ranker_data["num_diagnosed"][day] = (sim.people.diagnosed.sum())
@@ -466,6 +479,12 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         ##update contacts
         self.conts_prev_day = contacts_df
 
+    def get_idx_obs_I(self):
+        test_stats = self.tester.get_all_stats()
+        if len(test_stats) > 0:
+            return np.unique(test_stats[test_stats["res_state"]==1]["i"])
+        else:
+            return []
 
     def prepare_export(self):
         ### delete the ranker to save memory

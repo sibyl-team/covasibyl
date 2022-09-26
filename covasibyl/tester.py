@@ -233,6 +233,12 @@ class CovasimTester:
 
         return np.array(self.test_results[day])
         #np.stack(np.where(self.date_diagn_state == day),1)[:,::-1]
+    
+    def get_all_stats(self):
+        if len(self.tests_stats)>0:
+            return np.concatenate(self.tests_stats)
+        else:
+            return []
 
     def _observe_sources(self, sim):
 

@@ -189,3 +189,47 @@ class ContactsSaver(Analyzer):
         
         t_take=time() - t0
         print(f"Saved contacts in {t_take:4.3f} s")
+
+
+class StateSaver(Analyzer):
+    def __init__(self, label=None):
+        super().__init__(label)
+
+        self.states = None
+    
+    def initialize(self, sim=None):
+
+        self.states = dict()
+        super().initialize(sim)
+        
+    def apply(self, sim):
+        
+        N = int(sim["pop_size"])
+        status = np.empty(N, dtype=np.int8)
+        people = sim.people
+        status[people.susceptible] = 0
+        is_E = (people.exposed &(~people.infectious))
+        status[is_E] = 1
+        
+
+        nonsympt = (people.infectious &(~people.symptomatic))
+        asympt = nonsympt & np.isnan(people.date_symptomatic)
+        presympt = nonsympt & np.logical_not(asympt)
+        #stats_df.loc[inds_test[asympt], "t_state"] = "AS"
+        status[asympt] = 2
+        status[presympt] = 3
+        #stats_df.loc[inds_test[presympt],"t_state"] = "PS"
+
+        symptomat = people.symptomatic
+        severe = people.severe
+        critical = people.critical
+        mild = symptomat & np.logical_not(severe | critical)
+        status[mild] = 4
+        status[critical] = 5
+        status[severe]=6
+
+        status[people.recovered] = 7
+        status[people.dead] = 8
+
+        self.states[sim.t] = status
+
