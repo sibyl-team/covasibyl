@@ -21,5 +21,7 @@ setup(
         "scipy",
         "pandas",
         #"sib",
-        "covasim==3.1.2"],
+        "covasim==3.1.2",
+        "scikit-learn",
+        "mitirankers"],
 )

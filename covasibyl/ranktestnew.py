@@ -554,7 +554,7 @@ class RankTester(BaseRankTester):
     def choose_tests_ranker(self, ranking, test_inds_symp):
         n_tests_algo = self.n_tests - len(test_inds_symp)
         if n_tests_algo > 0:
-            test_inds_rk = ranking[:n_tests_algo].index.to_numpy()
+            test_inds_rk = ranking.iloc[:n_tests_algo].index.to_numpy()
         else:
             test_inds_rk = np.empty((0,),dtype=np.int_)
         
