@@ -286,10 +286,13 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                 ## filter the contacts for quarantined
                 self._warn_once("qfact", f"Quarantine factor is {self.quar_factor}")
                 quar_idcs = cvu.true(sim.people.quarantined)
+                quar_andapp = (sim.people.quarantined & self.has_app.astype(bool))
                 msum = conts_prev_day["m"].sum()
                 conts_prev_day = utils.filt_contacts_df(conts_prev_day, quar_idcs, self.quar_factor, N)
-                if len(quar_idcs) > 0:
+                if sum(quar_andapp) > 0:
                     assert conts_prev_day["m"].sum() < msum
+                elif len(quar_idcs)>0:
+                    print(f"{len(quar_idcs)} Quar not with app")
         
         FIND_INFECTED = sim.people.infectious.sum() > 0 or sim.people.exposed.sum()>0
         FIND_INFECTED = FIND_INFECTED and HAVE_CONTS
