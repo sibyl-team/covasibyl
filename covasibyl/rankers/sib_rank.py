@@ -10,6 +10,7 @@ def make_callback(damp, maxit, tol,conv_arr):
             ## converged
             conv_arr[0] = True
     return print_spec
+default_print =  lambda t,err,f: print(t,err)
 
 class SibRanker(AbstractRanker):
     def __init__(self,
@@ -24,7 +25,7 @@ class SibRanker(AbstractRanker):
                 fnr = 0.0,
                 fpr = 0.0,
                 tau = None,
-                print_callback = lambda t,err,f: print(t,err),
+                print_callback = None,
                 debug_times=False,
                 ):
         
@@ -129,14 +130,18 @@ class SibRanker(AbstractRanker):
 
         conver1 = [False]
         tinit = time.time()
+        callback = make_callback(self.damp0, self.maxit0, self.tol, conver1) if self.print_callback is None \
+            else self.print_callback
         sib.iterate(self.f, maxit=self.maxit0, damping=self.damp0, tol=self.tol, 
-                    callback=make_callback(self.damp0, self.maxit0, self.tol, conver1))
+                    callback=callback)
         print()
         titer1 = time.time() - tinit
         conver2 = [False]
         tinit = time.time()
+        callback = make_callback(self.damp0, self.maxit0, self.tol, conver2) if self.print_callback is None \
+            else self.print_callback
         sib.iterate(self.f, maxit=self.maxit1, damping=self.damp1, tol=self.tol, 
-                    callback=make_callback(self.damp1, self.maxit1, self.tol, conver2))
+                    callback=callback)
         titer2 = time.time() - tinit
         print()
 
