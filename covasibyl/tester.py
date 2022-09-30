@@ -148,8 +148,6 @@ class CovasimTester:
         people.date_tested[inds] = sim.t # Only keep the last time they tested
 
         
-
-        
         ## lost tests
         not_lost = utils.n_binomial(1.0-loss_prob, len(inds))
         inds_test = inds[not_lost]
@@ -195,7 +193,7 @@ class CovasimTester:
         res_recov = np.concatenate((ids_rec[test_R], cvu.itruei(people.dead, inds_test))) #inds_test[rec_inds]
         res_infected = np.concatenate((res_infected, ids_rec[~test_R]))
 
-        #assert len(res_recov) + len(res_infected) + len(res_susc) == num_tests
+        #if we are asked to contain the epidemic (put in isolation)
         if self.give_diagnosis:
             ## Keep this for compatibility
             # Store the date the person will be diagnosed, as well as the date they took the test which will come back positive
