@@ -134,6 +134,9 @@ def sel_contacts_idx_df(cts, idcs, N:int, which="or"):
 def check_free_birds(people):
     free_idx = (people.infectious & np.logical_not(people.diagnosed) ).nonzero()[0]
     return free_idx
+def check_free_birds_EI(people):
+    free_idx = (people.exposed & np.logical_not(people.diagnosed) ).nonzero()[0]
+    return free_idx
 
 def choose_n_rng(max_n:int, n:int, rng):
     '''

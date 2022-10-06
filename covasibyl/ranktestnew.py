@@ -312,10 +312,13 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                 elif len(quar_idcs)>0:
                     print(f"{len(quar_idcs)} Quar not with app")
         
-       # if self.isolation_factor > 0:
-        FIND_INFECTED = (sim.people.infectious.sum() > 0 or sim.people.exposed.sum()>0)
-        #else:
-        #    FIND_INFECTED = free birds > 0
+        if self.iso_cts_strength > 0:
+            FIND_INFECTED = (sim.people.infectious.sum() > 0 or sim.people.exposed.sum()>0)
+        else:
+            nfreeb=len(utils.check_free_birds_EI(sim.people))
+            if nfreeb == 0:
+                self._warn_once("end_freeb", "Have no free birds, not using ranker anymore")
+            FIND_INFECTED =  nfreeb > 0
         FIND_INFECTED = FIND_INFECTED and HAVE_CONTS
 
         obs_ranker = self.tester.get_results(day-1) ## get the correct obs for the ranker
