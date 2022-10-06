@@ -113,12 +113,16 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         self.mitigate = mitigate
         self._check_epi_tests = kwargs["check_epi_tests"] if "check_epi_tests" in kwargs else False
         self.only_random = kwargs["only_random_tests"] if "only_random_tests" in kwargs else False
+        self.give_Trel = kwargs["give_t_rel"] if "give_t_rel" in kwargs else False
         self.only_symptom = only_sympt
         if self.only_random and self.only_symptom:
             raise ValueError("Cannot give both 'only random' and 'only symptomatic' tests. Decide one of them.")
 
         self.extra_stats_fn = kwargs["stats_extra_fn"] if "stats_extra_fn" in kwargs else None
         self._warned = defaultdict(lambda: False)
+
+        if self.debug:
+            print("Ranker iso factor: ",self.iso_cts_strength)
 
     def _init_for_sim(self, sim):
         """
@@ -278,6 +282,19 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                 conts_prev_day = utils.filt_contacts_mult(
                         conts_prev_day, weight=self.has_app, N=N, only_i=False
                 )
+            if self.give_Trel:
+                self._warn_once("give_trel","GIVING T_REL INFORMATION TO RANKER; THIS CANNOT BE USED FOR CONTAINMENT")
+                if self.mitigate:
+                    raise ValueError("Asked to give sensitive parameters for containment. \n\
+                        Refusing to continue, check the script parameter")
+                peop = sim.people
+                # = peop.rel_trans.copy()
+                conts_prev_day = utils.filt_contacts_mult(
+                        conts_prev_day, weight=peop.rel_trans, N=N, only_i=True
+                )
+                conts_prev_day = utils.filt_contacts_mult(
+                    conts_prev_day, weight=peop.rel_sus, N=N, only_j=True,
+                )
             ## remove contacts that are isolated (tested)
             tested_iso = cvu.true(sim.people.diagnosed)
             conts_prev_day = utils.filt_contacts_df(conts_prev_day,
@@ -288,13 +305,17 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                 quar_idcs = cvu.true(sim.people.quarantined)
                 quar_andapp = (sim.people.quarantined & self.has_app.astype(bool))
                 msum = conts_prev_day["m"].sum()
-                conts_prev_day = utils.filt_contacts_df(conts_prev_day, quar_idcs, self.quar_factor, N)
+                if len(quar_idcs) > 0:
+                    conts_prev_day = utils.filt_contacts_df(conts_prev_day, quar_idcs, self.quar_factor, N)
                 if sum(quar_andapp) > 0:
                     assert conts_prev_day["m"].sum() < msum
                 elif len(quar_idcs)>0:
                     print(f"{len(quar_idcs)} Quar not with app")
         
-        FIND_INFECTED = sim.people.infectious.sum() > 0 or sim.people.exposed.sum()>0
+       # if self.isolation_factor > 0:
+        FIND_INFECTED = (sim.people.infectious.sum() > 0 or sim.people.exposed.sum()>0)
+        #else:
+        #    FIND_INFECTED = free birds > 0
         FIND_INFECTED = FIND_INFECTED and HAVE_CONTS
 
         obs_ranker = self.tester.get_results(day-1) ## get the correct obs for the ranker

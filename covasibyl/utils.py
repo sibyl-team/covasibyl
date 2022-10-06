@@ -75,7 +75,7 @@ def filt_contacts_df(cts, idcs, multipl, N, only_i=False):
 
     return cts_mat_to_df(mat)
 
-def filt_contacts_mult(cts, weight:np.ndarray, N:int, only_i=False, return_df=True):
+def filt_contacts_mult(cts, weight:np.ndarray, N:int, only_i=False, only_j=False, return_df=True):
     """
     Filter contacts by multiplying the contacts value by a 
     factor dependent on the index
@@ -91,10 +91,13 @@ def filt_contacts_mult(cts, weight:np.ndarray, N:int, only_i=False, return_df=Tr
     """
     mat  = sp.coo_matrix((cts["m"], (cts["i"], cts["j"])),shape=(N,N)).tocsr()
     filt = sp.diags(weight, format="csr")
+    if only_i and only_j:
+        raise ValueError("Cannot multiply only i and only j")
     if not only_i:
         mat = mat.dot(filt) ##djj
-    #if both: 
-    mat = filt.dot(mat) #dii
+    #if both:
+    if not only_j:
+        mat = filt.dot(mat) #dii
     if return_df:
         return cts_mat_to_df(mat)
     else:
@@ -217,3 +220,28 @@ def choose_probs(probs: np.ndarray, rng=None):
 
 def gamma_pdf_full(x, alfa, beta ):
     return beta**alfa*x**(alfa-1)*np.exp(-1*beta*x)/gamma_f(alfa)
+
+def get_state(N, dates_save, day):
+    state = np.zeros(N,dtype=np.int8)
+    exp = (dates_save["date_exposed"] <= day)
+    state[exp] = 1
+    infect = (dates_save["date_infectious"]<=day)
+    sympt = (dates_save["date_symptomatic"]<=day)
+    nonsympt = infect & (~sympt)
+
+    neversympt = np.isnan(dates_save["date_symptomatic"])
+    asymp = (nonsympt & neversympt)
+    presymp = nonsympt & (~neversympt)
+    state[asymp] = 2
+    state[presymp] = 3
+
+    state[sympt] = 4
+    severe = (dates_save["date_severe"] <= day)
+    critical = (dates_save["date_critical"]<= day)
+    state[severe] = 5
+    state[critical] = 6
+
+    state[dates_save["date_recovered"]<=day] = 7
+    state[dates_save["date_dead"]<=day] = 8
+
+    return state
