@@ -438,7 +438,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
 
             ## stats -> check among those that I have found from symptomatic testing
         else:
-            ### RANKER IS PASSIVE, only giving symptomatics
+            ### Before intervention, giving only symptomatics
             ## If we aren't asked to give only random tests
             test_indcs_all =[]
             if not self.only_random:

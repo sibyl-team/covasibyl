@@ -12,7 +12,7 @@ from covasim.interventions import (Intervention, preprocess_day, process_daily_d
 
 from .tester import CovasimTester
 from .utils import choose_w_rng
-from .test_utils  import find_ili_inds, get_symp_probs
+from .test_utils  import find_ili_inds, get_symp_probs, make_symp_probs_covasim_def
 
 def choose_probs(test_probs, randgen):
     return cvu.true(
@@ -110,21 +110,8 @@ class TestProbNum(Intervention):
         
         return
     def _make_symp_probs_all(self,sim, start_day):
-        symp_inds = cvu.true(sim.people.symptomatic)
-        symp_prob = get_symp_probs(sim, self.symp_test_p, self.pdf)
-        
-        # Define symptomatics, accounting for ILI prevalence
-        ili_inds = find_ili_inds(sim, self.ili_prev, symp_inds, start_day)
-
-        diag_inds = cvu.true(sim.people.diagnosed)
-
-        test_probs = np.zeros(sim['pop_size']) # Begin by assigning equal testing probability to everyone
-        test_probs[symp_inds]       = symp_prob            # People with symptoms (true positive)
-        test_probs[ili_inds]        = self.symp_test_p ## Ili inds, can be 0
-
-        test_probs[diag_inds] = 0.0 # People who are diagnosed don't test
-
-        return test_probs
+        return make_symp_probs_covasim_def(sim, start_day, self.symp_test_p,
+        pdf=self.pdf, ili_prev=self.ili_prev)
 
     def _run_tests_def(self, sim, test_inds):
         ### Helper function to shorten the testing

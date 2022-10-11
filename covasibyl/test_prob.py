@@ -7,6 +7,9 @@ import covasim.defaults as cvd
 from covasim.interventions import (Intervention, preprocess_day, process_daily_data, get_day,
                 get_quar_inds, get_subtargets)
 
+from . import utils, tester
+from .test_utils import make_symp_probs_covasim_def
+
 class TestProb(Intervention):
     '''
     Assign each person a probability of being tested for COVID based on their
@@ -32,7 +35,7 @@ class TestProb(Intervention):
     **Examples**::
 
         interv = cv.test_prob(symp_prob=0.1, asymp_prob=0.01) # Test 10% of symptomatics and 1% of asymptomatics
-        interv = cv.test_prob(symp_quar_prob=0.4) # Test 40% of those in quarantine with symptoms
+        interv = cv.test_prob(symp_quar_prob=0.4) # Test 40% of those in quarantine wprob_arrith symptoms
     '''
     def __init__(self, symp_prob, asymp_prob=0.0, symp_quar_prob=None, asymp_quar_prob=None, quar_policy=None, subtarget=None, ili_prev=None,
                  sensitivity=1.0, loss_prob=0.0, test_delay=0, start_day=0, end_day=None, swab_delay=None, exp_as_I=False,
@@ -52,16 +55,20 @@ class TestProb(Intervention):
         self.end_day          = end_day
         self.pdf              = cvu.get_pdf(**sc.mergedicts(swab_delay)) # If provided, get the distribution's pdf -- this returns an empty dict if None is supplied
         self.exp_as_I = exp_as_I
+        self.rng = None
+        self.mtester = None
         return
 
 
     def initialize(self, sim):
         ''' Fix the dates '''
         super().initialize()
+        self.rng = np.random.RandomState(np.random.PCG64(sim["rand_seed"]))
         self.start_day = preprocess_day(self.start_day, sim)
         self.end_day   = preprocess_day(self.end_day,   sim)
         self.days      = [self.start_day, self.end_day]
         self.ili_prev  = process_daily_data(self.ili_prev, sim, self.start_day)
+        self.mtester = tester.CovasimTester(sim,contain=True)
         return
 
 
@@ -71,6 +78,19 @@ class TestProb(Intervention):
         self.subtarget = None # Reset to save memory
         return
 
+    def _run_tests_def(self, sim, test_inds):
+        ### Helper function to shorten the testing
+        t=sim.t
+        if self.exp_as_I:
+            self.mtester.run_tests(sim, test_inds, test_sensitivity=self.sensitivity,
+                loss_prob=self.loss_prob, test_delay=self.test_delay)
+            sim.results['new_tests'][t] += len(test_inds)*(sim['pop_scale']/sim.rescale_vec[t]-1)
+   
+        else:
+            test_people(sim.people, test_inds, test_sensitivity=self.sensitivity,
+            loss_prob=self.loss_prob, test_delay=self.test_delay,
+            exp_as_I=self.exp_as_I)
+            sim.results['new_tests'][t] += len(test_inds)*(sim['pop_scale']/sim.rescale_vec[t])
 
     def apply(self, sim):
         ''' Perform testing '''
@@ -78,7 +98,13 @@ class TestProb(Intervention):
         t = sim.t
         start_day = get_day(self.start_day, self, sim)
         end_day   = get_day(self.end_day,   self, sim)
+        rng_tests = self.mtester.randstate
         if t < start_day:
+            ### test for symptomatics only
+            test_probs_sym = make_symp_probs_covasim_def(sim, start_day,start_day, self.pdf, self.ili_prev)
+            ## extract people to test
+            newtest = cvu.true(rng_tests.random(len(test_probs_sym)) < test_probs_sym)
+            self._run_tests_def(sim, newtest)
             return
         elif end_day is not None and t > end_day:
             return
@@ -103,7 +129,7 @@ class TestProb(Intervention):
             rel_t = t - start_day
             if rel_t < len(self.ili_prev):
                 n_ili = int(self.ili_prev[rel_t] * pop_size)  # Number with ILI symptoms on this day
-                ili_inds = cvu.choose(pop_size, n_ili) # Give some people some symptoms, assuming that this is independent of COVID symptomaticity...
+                ili_inds = utils.choose_n_rng(pop_size, n_ili,self.rng)# Give some people some symptoms, assuming that this is independent of COVID symptomaticity...
                 ili_inds = np.setdiff1d(ili_inds, symp_inds)
 
         # Define asymptomatics: those who neither have COVID symptoms nor ILI symptoms
@@ -126,17 +152,13 @@ class TestProb(Intervention):
             subtarget_inds, subtarget_vals = get_subtargets(self.subtarget, sim)
             test_probs[subtarget_inds] = subtarget_vals # People being explicitly subtargeted
         test_probs[diag_inds] = 0.0 # People who are diagnosed don't test
-        test_inds = cvu.true(cvu.binomial_arr(test_probs)) # Finally, calculate who actually tests
+        test_inds = cvu.true(rng_tests.random(len(test_probs)) < test_probs) # Finally, calculate who actually tests
 
         # Actually test people
-        test_people(sim.people, test_inds, test_sensitivity=self.sensitivity,
-            loss_prob=self.loss_prob, test_delay=self.test_delay,
-            exp_as_I=self.exp_as_I) # Actually test people
-        sim.results['new_tests'][t] += len(test_inds)*sim['pop_scale']/sim.rescale_vec[t] # If we're using dynamic scaling, we have to scale by pop_scale, not rescale_vec
-
+        self._run_tests_def(sim, test_inds)
         return test_inds
 
-def test_people(people, inds, test_sensitivity=1.0, loss_prob=0.0, test_delay=0, exp_as_I=False):
+def test_people(people, inds, test_sensitivity=1.0, loss_prob=0.0, test_delay=0, rng=None,exp_as_I=False):
     '''
     Method to test people. Typically not to be called by the user directly;
     see the test_num() and test_prob() interventions.
@@ -151,17 +173,17 @@ def test_people(people, inds, test_sensitivity=1.0, loss_prob=0.0, test_delay=0,
     inds = np.unique(inds)
     people.tested[inds] = True
     people.date_tested[inds] = people.t # Only keep the last time they tested
-
+    
     is_infectious = cvu.itruei(people.infectious, inds)
     if exp_as_I:
         is_exp_inf=cvu.itruei((people.exposed &(~people.infectious)), inds)
         is_infectious = np.concatenate((is_infectious,is_exp_inf))
         assert len(np.unique(is_infectious)) == len(is_infectious)
-    pos_test      = cvu.n_binomial(test_sensitivity, len(is_infectious))
+    pos_test      = utils.n_binomial(test_sensitivity, len(is_infectious), rng=rng)
     is_inf_pos    = is_infectious[pos_test]
 
     not_diagnosed = is_inf_pos[np.isnan(people.date_diagnosed[is_inf_pos])]
-    not_lost      = cvu.n_binomial(1.0-loss_prob, len(not_diagnosed))
+    not_lost      = utils.n_binomial(1.0-loss_prob, len(not_diagnosed),rng=rng)
     final_inds    = not_diagnosed[not_lost]
 
     # Store the date the person will be diagnosed, as well as the date they took the test which will come back positive

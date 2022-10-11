@@ -199,7 +199,7 @@ def n_binomial(prob, n, rng=None):
         rng = np.random
     return rng.random(n) < prob
 
-def choose_probs(probs: np.ndarray, rng=None):
+def choose_probs_ignz(probs: np.ndarray, rng=None):
     """
     Random sampling of implicit indices, according to the probability probs
     Equivalent to series of Bernoulli random trials
@@ -217,6 +217,22 @@ def choose_probs(probs: np.ndarray, rng=None):
     idcs = nz[rng.random(len(pp)) < pp]
 
     return idcs
+
+def sample_probs_idcs(probs, rng=None):
+    """
+    Perform random sampling and return the indices which are true
+
+    Args:
+        probs (_type_): _description_
+        rng (_type_, optional): _description_. Defaults to None.
+
+    Returns:
+        _type_: _description_
+    """
+    if rng is None:
+        rng = np.random
+    d=(rng.random(len(probs)) < probs)
+    return d.nonzero()[0]
 
 def gamma_pdf_full(x, alfa, beta ):
     return beta**alfa*x**(alfa-1)*np.exp(-1*beta*x)/gamma_f(alfa)
