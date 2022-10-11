@@ -35,6 +35,7 @@ def find_ili_inds(sim, ili_prev, symp_inds, start_day, rng=None):
     t = sim.t
     if ili_prev is not None:
         rel_t = t - start_day
+        ## TODO: add ili_prev symptoms before intervention day (start_day > t)
         if rel_t < len(ili_prev):
             n_ili = int(ili_prev[rel_t] * pop_size)  # Number with ILI symptoms on this day
             ili_inds = choose_n_rng(pop_size, n_ili, rng) # Give some people some symptoms, assuming that this is independent of COVID symptomaticity...
@@ -53,3 +54,20 @@ def get_random_indcs_test(sim, n_tests, rng, exclude_diag=True):
             rng=rng)
 
     return inds_test
+
+def make_symp_probs_covasim_def(sim, start_day, symp_test_p, pdf, ili_prev):
+    symp_inds = cvu.true(sim.people.symptomatic)
+    symp_prob = get_symp_probs(sim, symp_test_p, pdf)
+    
+    # Define symptomatics, accounting for ILI prevalence
+    ili_inds = find_ili_inds(sim, ili_prev, symp_inds, start_day)
+
+    diag_inds = cvu.true(sim.people.diagnosed)
+
+    test_probs = np.zeros(sim['pop_size']) # Begin by assigning equal testing probability to everyone
+    test_probs[symp_inds]       = symp_prob            # People with symptoms (true positive)
+    test_probs[ili_inds]        = symp_test_p ## Ili inds, can be 0
+
+    test_probs[diag_inds] = 0.0 # People who are diagnosed don't test
+
+    return test_probs
