@@ -161,11 +161,17 @@ class TestProbNum(Intervention):
             if self.init_sympt:
                 ## No intervention yet, observe only symptomatics
                 test_probs = self._make_symp_probs_all(sim, start_day)
+                ##DEBUGGING
+                #print(f"{t} pn0: {test_probs[test_probs>0]} in0: {cvu.true(test_probs>0)}")
+
+                #print(f"{t}: Randstate: {tester_rng._bit_generator.state['state']}")
+
                 test_inds_sym = choose_probs(test_probs,tester_rng)
                 ## Limit symptomatic tests
                 if len(test_inds_sym) > n_tests_all:
                     tester_rng.shuffle(test_inds_sym)
                     test_inds_sym = test_inds_sym[:n_tests_all]
+
                 ### Test
                 self._run_tests_def(sim, test_inds_sym)
 

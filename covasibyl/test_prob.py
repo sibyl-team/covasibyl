@@ -101,9 +101,14 @@ class TestProb(Intervention):
         rng_tests = self.mtester.randstate
         if t < start_day:
             ### test for symptomatics only
-            test_probs_sym = make_symp_probs_covasim_def(sim, start_day,start_day, self.pdf, self.ili_prev)
+            test_probs_sym = make_symp_probs_covasim_def(sim, start_day,self.symp_prob, self.pdf, self.ili_prev)
             ## extract people to test
+            #print(f"{t}: Infectious: {cvu.true(sim.people.infectious)}, Exposed: {cvu.true(sim.people.exposed)}")
+            #print(f"{t}: Randstate: {rng_tests._bit_generator.state['state']}")
+            #print(f"{t} pn0: {test_probs_sym[test_probs_sym>0]} in0: {cvu.true(test_probs_sym>0)}")
+
             newtest = cvu.true(rng_tests.random(len(test_probs_sym)) < test_probs_sym)
+            #print(f"{t}: Randstate: {rng_tests._bit_generator.state['state']}")
             self._run_tests_def(sim, newtest)
             return
         elif end_day is not None and t > end_day:
