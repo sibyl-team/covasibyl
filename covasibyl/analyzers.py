@@ -104,7 +104,9 @@ class QuarantineSaver(Analyzer):
             assert len(self.quar_day[day]) == 0
 
 class ContactsSaver(Analyzer):
-    def __init__(self,quar_factor=1., iso_factor=0.1, start_day=0, end_day=None, save_only="",printout=False, every_day=False, *args, **kwargs):
+    def __init__(self,quar_factor=1., iso_factor=0.1, start_day=0, end_day=None, save_only="",
+        stop_on_end=True,
+        printout=False, every_day=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
         self.contacts_saved = None
@@ -114,6 +116,7 @@ class ContactsSaver(Analyzer):
         self.everyday = every_day
         self.start_day=start_day
         self.end_day=end_day
+        self.stop_end=stop_on_end
     
         self._warned = defaultdict(lambda: False)
 
@@ -148,6 +151,7 @@ class ContactsSaver(Analyzer):
         elif end_day is not None and t > end_day:
             return
         
+        
         t0 = time()
         N = len(sim.people.sex)
         cts_df = utils.get_contacts_day(sim.people)
@@ -175,8 +179,15 @@ class ContactsSaver(Analyzer):
         if self.save_only=="EI":
             exp_i_idc=cvu.true(sim.people.exposed)
             cts_df = utils.sel_contacts_idx_df(cts_df, exp_i_idc, N,which="or")
+        elif self.save_only=="dynam":
+            idc_filt=cvu.true(sim.people.exposed | sim.people.recovered | sim.people.dead)
+            cts_df = utils.sel_contacts_idx_df(cts_df, idc_filt, N,which="or")
         elif self.save_only!="":
             self._warn_once("stat_save",f"Saving string {self.save_only} not recognized, saving all contacts by state")
+
+        if self.stop_end and sum(sim.people.exposed)==0:
+            self._warn_once("stop_saving",f"Dynamics ended, stop saving contacts on day {t}")
+            self.end_day = int(sim.t)
 
         if self.everyday:
             day = sim.t
