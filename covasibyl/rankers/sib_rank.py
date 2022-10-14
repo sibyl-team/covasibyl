@@ -9,6 +9,7 @@ def make_callback(damp, maxit, tol,conv_arr):
         if e<tol:
             ## converged
             conv_arr[0] = True
+        conv_arr[1] = e
     return print_spec
 default_print =  lambda t,err,f: print(t,err)
 
@@ -71,6 +72,8 @@ class SibRanker(AbstractRanker):
         self.tneg = sib.Test(1.0 - self.fnr, self.fnr, 1.0 - self.fnr)
         self.tpos = sib.Test(self.fpr, 1.0 - self.fpr, self.fpr)
 
+        self.last_err = self.bpseeds.copy()
+
         self.log_times = []
 
 
@@ -128,7 +131,7 @@ class SibRanker(AbstractRanker):
         
         tdrop = time.time()-tinit-tfakeobs
 
-        conver1 = [False]
+        conver1 = [False, np.nan]
         tinit = time.time()
         callback = make_callback(self.damp0, self.maxit0, self.tol, conver1) if self.print_callback is None \
             else self.print_callback
@@ -136,7 +139,7 @@ class SibRanker(AbstractRanker):
                     callback=callback)
         print()
         titer1 = time.time() - tinit
-        conver2 = [False]
+        conver2 = [False, np.nan]
         tinit = time.time()
         callback = make_callback(self.damp0, self.maxit0, self.tol, conver2) if self.print_callback is None \
             else self.print_callback
@@ -170,12 +173,14 @@ class SibRanker(AbstractRanker):
         self.bpseeds[t_day] = nseed
         self.lls[t_day] = ll
         self.conv[t_day] = conver1[0] or conver2[0]
+        self.last_err[t_day] = conver2[1]
 
         data["<I>"] = self.bpIs
         data["<IR>"] = self.bpRs + self.bpIs
         data["<seeds>"] = self.bpseeds
         data["lls"] = self.lls
         data["converged"] = self.conv
+        data["err_conv"] = self.last_err 
         ###### warning
         
         # inf_prob = [[i, 1-self.f.nodes[i].bt[-1]] for i in range(self.N)]
