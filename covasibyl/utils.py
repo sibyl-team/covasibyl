@@ -261,3 +261,33 @@ def get_state(N, dates_save, day):
     state[dates_save["date_dead"]<=day] = 8
 
     return state
+
+def randround_rng(x, rng):
+    '''
+    Round a float, list, or array probabilistically to the nearest integer. Works
+    for both positive and negative values.
+
+    Adapted from:
+        https://stackoverflow.com/questions/19045971/random-rounding-to-integer-in-python
+
+    Args:
+        x (int, list, arr): the floating point numbers to probabilistically convert to the nearest integer
+
+    Returns:
+        Array of integers
+
+    **Example**::
+
+        sc.randround(np.random.randn(8)) # Returns e.g. array([-1,  0,  1, -2,  2,  0,  0,  0])
+
+    New in version 1.0.0.
+    '''
+    if rng is None:
+        rng = np.random
+    if isinstance(x, np.ndarray):
+        output = np.array(np.floor(x+rng.random(x.size)), dtype=int)
+    elif isinstance(x, list):
+        output = [randround_rng(i, rng) for i in x]
+    else:
+        output = int(np.floor(x+rng.random()))
+    return output

@@ -69,6 +69,7 @@ class TestProb(Intervention):
         self.days      = [self.start_day, self.end_day]
         self.ili_prev  = process_daily_data(self.ili_prev, sim, self.start_day)
         self.mtester = tester.CovasimTester(sim,contain=True)
+        self.extra_rng = np.random.RandomState(np.random.PCG64(3))
         return
 
 
@@ -101,7 +102,8 @@ class TestProb(Intervention):
         rng_tests = self.mtester.randstate
         if t < start_day:
             ### test for symptomatics only
-            test_probs_sym = make_symp_probs_covasim_def(sim, start_day,self.symp_prob, self.pdf, self.ili_prev)
+            test_probs_sym = make_symp_probs_covasim_def(sim, start_day,self.symp_prob, self.pdf,
+             self.ili_prev, self.extra_rng)
             ## extract people to test
             #print(f"{t}: Infectious: {cvu.true(sim.people.infectious)}, Exposed: {cvu.true(sim.people.exposed)}")
             #print(f"{t}: Randstate: {rng_tests._bit_generator.state['state']}")

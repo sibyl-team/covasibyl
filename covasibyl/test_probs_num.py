@@ -11,7 +11,7 @@ from covasim.interventions import (Intervention, preprocess_day, process_daily_d
                 get_quar_inds)
 
 from .tester import CovasimTester
-from .utils import choose_w_rng
+from .utils import choose_w_rng, randround_rng
 from .test_utils  import find_ili_inds, get_symp_probs, make_symp_probs_covasim_def
 
 def choose_probs(test_probs, randgen):
@@ -102,6 +102,7 @@ class TestProbNum(Intervention):
         self.ili_prev    = process_daily_data(self.ili_prev,    sim, self.start_day)
 
         self.mtester = CovasimTester(sim, contain=self.mitigate)
+        self.extra_rng = np.random.RandomState(np.random.PCG64(3))
 
         self.hist =[]
         self.tested_idcs_rnd = {}
@@ -111,7 +112,7 @@ class TestProbNum(Intervention):
         return
     def _make_symp_probs_all(self,sim, start_day):
         return make_symp_probs_covasim_def(sim, start_day, self.symp_test_p,
-        pdf=self.pdf, ili_prev=self.ili_prev)
+        pdf=self.pdf, ili_prev=self.ili_prev, rng=self.extra_rng)
 
     def _run_tests_def(self, sim, test_inds):
         ### Helper function to shorten the testing
@@ -140,7 +141,7 @@ class TestProbNum(Intervention):
             if sim.rescale_vec[t] != 1:
                 self._warn_once("rescale_tests", f"Rescaling number of tests because of rescale_vec: {sim.rescale_vec[t:]}")
                 # Correct for scaling that may be applied by rounding to the nearest number of tests
-                n_tests_all = sc.randround(self.daily_tests[rel_t]/sim.rescale_vec[t])
+                n_tests_all = randround_rng(self.daily_tests[rel_t]/sim.rescale_vec[t], self.extra_rng)
             else:
                 n_tests_all = self.daily_tests[rel_t]
             if not (n_tests_all and np.isfinite(n_tests_all)): # If there are no tests today, abort early
@@ -155,7 +156,7 @@ class TestProbNum(Intervention):
             in_pop_tot_prob = test_probs.sum()*sim.rescale_vec[t] # Total "testing weight" of people in the subsampled population
             out_pop_tot_prob = sim.scaled_pop_size - sim.rescale_vec[t]*sim['pop_size'] # Find out how many people are missing and assign them each weight 1
             in_frac = in_pop_tot_prob/(in_pop_tot_prob + out_pop_tot_prob) # Fraction of tests which should fall in the sample population
-            n_tests_all = sc.randround(n_tests_all*in_frac) # Recompute the number of tests
+            n_tests_all = randround_rng(n_tests_all*in_frac, self.extra_rng) # Recompute the number of tests
 
         if t < start_day:
             if self.init_sympt:

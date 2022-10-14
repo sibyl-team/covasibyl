@@ -55,12 +55,12 @@ def get_random_indcs_test(sim, n_tests, rng, exclude_diag=True):
 
     return inds_test
 
-def make_symp_probs_covasim_def(sim, start_day, symp_test_p, pdf, ili_prev):
+def make_symp_probs_covasim_def(sim, start_day, symp_test_p, pdf, ili_prev, rng):
     symp_inds = cvu.true(sim.people.symptomatic)
     symp_prob = get_symp_probs(sim, symp_test_p, pdf)
     
     # Define symptomatics, accounting for ILI prevalence
-    ili_inds = find_ili_inds(sim, ili_prev, symp_inds, start_day)
+    ili_inds = find_ili_inds(sim, ili_prev, symp_inds, start_day, rng)
 
     diag_inds = cvu.true(sim.people.diagnosed)
 
