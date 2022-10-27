@@ -77,7 +77,7 @@ def get_default_test_p_sym(sim, t, symp_test, test_pdf, test_probs=None):
 
 class CovasimTester:
 
-    def __init__(self, sim, seed=None, contain=True):
+    def __init__(self, sim, seed=None, contain=True, warn_diag=True):
         """
         A tester for covasim that saves the actual result of tests,
         not just the positive ones.
@@ -93,6 +93,7 @@ class CovasimTester:
         self.give_diagnosis = contain
 
         self.reinit()
+        self.warn_diag=warn_diag
 
     
     def reinit(self):
@@ -141,8 +142,9 @@ class CovasimTester:
         sim.results['new_tests'][today] += num_tests
         ## check that there are no diagnosed (eg positive-tested) people
         diagnosed = people.diagnosed[inds] | self.diagnosed[inds]
-        if diagnosed.sum() > 0:
-            warnings.warn(f"at time {sim.t}: Asking to test people who have already been diagnosed")
+        if self.warn_diag and diagnosed.sum() > 0:
+            msg = f"at time {sim.t}: Asking to test people who have already been diagnosed"
+            warnings.warn(msg)
 
         people.tested[inds] = True
         people.date_tested[inds] = sim.t # Only keep the last time they tested

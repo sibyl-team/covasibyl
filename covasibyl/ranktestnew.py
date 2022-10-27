@@ -68,6 +68,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                 mitigate=True,
                 only_sympt=False,
                 adoption_fraction=1.,
+                no_diag_test=False,
                 **kwargs
                 ):
 
@@ -119,6 +120,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             raise ValueError("Cannot give both 'only random' and 'only symptomatic' tests. Decide one of them.")
 
         self.extra_stats_fn = kwargs["stats_extra_fn"] if "stats_extra_fn" in kwargs else None
+        self.no_diag_test = no_diag_test
         self._warned = defaultdict(lambda: False)
 
         if self.debug:
@@ -142,7 +144,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         else:
             self.has_app = np.ones(self.N)
 
-        self.tester = CovasimTester(sim, contain=self.mitigate)
+        self.tester = CovasimTester(sim, contain=self.mitigate, warn_diag=not(self.no_diag_test))
         self._warned = defaultdict(lambda: False)
 
         #self.iso_cts_strength
@@ -244,8 +246,10 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         # Symptomatics test
         self._set_symp_quar_prob(test_probs, sim, symp_p=sympt_p)
 
-        ## remove already diagnosed
-        _remove_diagnosed_prob(test_probs, sim)
+        
+        if not self.no_diag_test:
+            ## remove already diagnosed
+            _remove_diagnosed_prob(test_probs, sim)
         test_inds_symp = cvu.true(
                     randgen.random(len(test_probs)) < test_probs
                 )
@@ -379,7 +383,8 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                 # Symptomatics test
                 self._set_symp_quar_prob(test_probs, sim)
                 ## remove already diagnosed
-                _remove_diagnosed_prob(test_probs, sim)
+                if not self.no_diag_test:
+                    _remove_diagnosed_prob(test_probs, sim)
                 test_inds_symp = cvu.true(
                     tester_rng.random(len(test_probs)) < test_probs
                 )
@@ -401,7 +406,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                     if len(rank_good)==0:
                         warnings.warn("No tests from ranker, test_probs: {}".format(sum(test_probs>0)))
 
-                    test_inds_rk = self.choose_tests_ranker(rank_good, test_inds_symp)
+                    test_inds_rk = self.choose_tests_ranker(rank_good,sim, test_inds_symp)
                     
                     ## accuracy
                     ntest_rk = len(test_inds_rk)
@@ -447,6 +452,9 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                 day_stats["nt_rand"] = len(test_indcs_all)
             
         ## this tests the individuals today
+        if sum(sim.people.infectious | sim.people.exposed)==0:
+            self._warn_once("no_tests_todo","No more infected, ending testing")
+            test_indcs_all = []
         self.tester.run_tests(sim, test_indcs_all,
                     test_sensitivity=self.sensitivity,
                     test_specificity=self.specificity,
@@ -516,7 +524,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         del self.ranker_data["logger"]
     
     @abstractmethod
-    def choose_tests_ranker(self, ranking, test_inds_symp):
+    def choose_tests_ranker(self, ranking, sim, test_inds_symp):
         raise NotImplementedError()
 
     @abstractmethod
@@ -575,7 +583,7 @@ class RankTester(BaseRankTester):
             test_inds = test_inds[:self.n_tests]
         return test_inds
 
-    def choose_tests_ranker(self, ranking, test_inds_symp):
+    def choose_tests_ranker(self, ranking, sim, test_inds_symp):
         n_tests_algo = self.n_tests - len(test_inds_symp)
         if n_tests_algo > 0:
             test_inds_rk = ranking.iloc[:n_tests_algo].index.to_numpy()
@@ -631,11 +639,13 @@ class ProbRankTester(BaseRankTester):
         ## do nothing
         return test_inds
     
-    def choose_tests_ranker(self, ranking, test_inds_symp):
-        
-        tests_corr = ranking[ranking > self.p_contain]
-        
-        return tests_corr.index.to_numpy()
+    def choose_tests_ranker(self, ranking, sim, test_inds_symp):
+        if (sim.people.infectious.sum() > 0 or sim.people.exposed.sum()>0):
+            ## there are still infected people to find
+            tests_corr = ranking[ranking > self.p_contain]
+            return tests_corr.index.to_numpy()
+        else:
+            return np.zeros((0,),dtype=np.int_)
 
     def make_random_tests(self, sim, randgen):
         raise ValueError("Cannot do random tests without fixed number of tests")
