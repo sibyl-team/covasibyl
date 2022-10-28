@@ -455,6 +455,8 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         if sum(sim.people.infectious | sim.people.exposed)==0:
             self._warn_once("no_tests_todo","No more infected, ending testing")
             test_indcs_all = []
+        elif len(test_indcs_all) == 0:
+            print("No tests performed")
         self.tester.run_tests(sim, test_indcs_all,
                     test_sensitivity=self.sensitivity,
                     test_specificity=self.specificity,

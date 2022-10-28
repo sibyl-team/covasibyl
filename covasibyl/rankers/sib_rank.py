@@ -1,6 +1,8 @@
 import time
 import sib
 import numpy as np
+import numba as nb
+#import scipy.sparse as sp
 from .template_rank import AbstractRanker
 
 def make_callback(damp, maxit, tol,conv_arr):
@@ -12,6 +14,23 @@ def make_callback(damp, maxit, tol,conv_arr):
         conv_arr[1] = e
     return print_spec
 default_print =  lambda t,err,f: print(t,err)
+
+@nb.jit()
+def _append_contacts_nb(fg, iarr,jarr,tarr,lamarr):
+    nc=len(iarr)
+    for u in range(nc):
+        fg.append_contact(iarr[u], jarr[u], tarr[u], lamarr[u])
+def append_many_contacts(contacts, fg,N):
+    if isinstance(contacts, np.recarray):
+        contacts.dtype.names = "i","j","t","m"
+        row = contacts["i"]
+        col = contacts["j"]
+        lambdas = contacts["m"]
+        times = contacts["t"]
+        _append_contacts_nb(fg, row, col, times, lambdas)
+        return True
+    else:
+        return False
 
 class SibRanker(AbstractRanker):
     def __init__(self,
@@ -28,6 +47,7 @@ class SibRanker(AbstractRanker):
                 tau = None,
                 print_callback = None,
                 debug_times=False,
+                faster_ctadd=False,
                 ):
         
         self.description = "class for BP inference of openABM loop"
@@ -48,6 +68,7 @@ class SibRanker(AbstractRanker):
         self.fnr = fnr
         self.fpr = fpr
         self.dbg_t = debug_times
+        self.faster_ctadd = faster_ctadd
 
 
     def init(self, N, T):
@@ -88,9 +109,13 @@ class SibRanker(AbstractRanker):
             self.all_obs[obs[2]] += [obs]
         tobs = time.time() - t0
         tinit = time.time()
-        
-        for c in daily_contacts:
-            self.f.append_contact(*c)
+        run_fast = self.faster_ctadd
+        if run_fast:
+            run_fast = append_many_contacts(daily_contacts,self.f,self.N)
+            print("Used numba loop: ", run_fast)
+        if not run_fast:
+            for c in daily_contacts:
+                self.f.append_contact(*c)
         
         tconts = time.time() - tinit
         tinit = time.time()
@@ -193,3 +218,34 @@ class SibRanker(AbstractRanker):
             
         rank = list(sorted(inf_prob, key=lambda tup: tup[1], reverse=True))
         return rank
+
+
+"""def append_many_contacts(contacts, fg,N):
+    if isinstance(contacts, np.recarray):
+        contacts.dtype.names = "i","j","t","m"
+        row = contacts["i"]
+        col = contacts["j"]
+        value = contacts["m"]
+        times = contacts["t"]
+    else:
+        return False
+    if np.any(times[1:]!=times[0]):
+        return False
+    sel_t = times[0]
+    
+    cts_mat = sp.csr_matrix((value, (row, col)), shape=(N, N))
+    cts_bin = sp.coo_matrix((value.astype(np.bool_), (row, col)), shape=(N,N))
+
+    if(cts_bin.transpose()!=cts_bin).nnz >0:
+        ##the matrix is not duplicate
+        print("Not fully undirected, try numba")
+        append_contacts_nb(fg, row, col, times, value)
+        return True
+    ccc=(sp.triu(cts_mat)).tocoo()
+    for (i,j,lam) in zip(ccc.row,ccc.col, ccc.data):
+        #print(i,j,k, cts_mat[j,i])
+        #break
+        fg.append_contact(i,j,sel_t, lam, cts_mat[j,i])
+
+    return True
+"""

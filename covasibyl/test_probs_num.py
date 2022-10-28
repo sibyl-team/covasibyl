@@ -247,7 +247,7 @@ class TestProbNum(Intervention):
                 self._warn_once("test_norand", "No random testing performed")
 
             if self.save_test_probs:
-                self.test_probs_rand[t] = test_probs_rnd
+                self.test_probs_rand[sim.t] = test_probs_rnd
 
             day_stats["nI_ttq"] = ntrueI_rand
 
