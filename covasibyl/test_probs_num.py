@@ -55,7 +55,7 @@ class TestProbNum(Intervention):
     def __init__(self, daily_tests, symp_test_p=0.5, quar_test=100.0, quar_policy=None, subtarget=None,
                  ili_prev=None, sensitivity=1.0, specificity=1.0, loss_prob=0, test_delay=0, contain=True,
                  start_day=0, end_day=None, swab_delay=None, init_sympt=False, 
-                 save_tests_n=0, save_test_probs=False, no_rnd_tests=False,no_testing=False,**kwargs):
+                 nfixed_rand_tests=0, save_test_probs=False, no_rnd_tests=False,no_testing=False,**kwargs):
         
         
         super().__init__(**kwargs) # Initialize the Intervention object
@@ -76,7 +76,7 @@ class TestProbNum(Intervention):
         
         self.mtester = None
         self.mitigate = contain
-        self.save_rand_tests = save_tests_n
+        self.nfixed_rand_tests = nfixed_rand_tests
         self.save_test_probs = save_test_probs
         self.no_rnd_tests = no_rnd_tests
         self.no_testing = no_testing
@@ -232,13 +232,15 @@ class TestProbNum(Intervention):
                ntests_rand = ntp
             
             ntrueI_rand = 0 ## we'll overwrite this later
-            if self.save_rand_tests>0:
+            if self.nfixed_rand_tests>0:
+                self._warn_once("test_save",f"Saving {self.nfixed_rand_tests} tests per day")
                 ## fake extraction
-                inds_test_rnd = choose_w_rng(probs=test_probs_rnd, n=self.save_rand_tests, unique=True,
+                inds_test_rnd = choose_w_rng(probs=test_probs_rnd, n=self.nfixed_rand_tests, unique=True,
                                         rng=tester_rng)
             else:
                 inds_test_rnd = choose_w_rng(probs=test_probs_rnd, n=ntests_rand, unique=True,
                                         rng=tester_rng)
+            
             #cvu.choose_w(probs=test_probs_rnd, n=ntests_rand, unique=True)
             if not self.no_rnd_tests:
                 test_inds = np.concatenate((test_inds, inds_test_rnd))
