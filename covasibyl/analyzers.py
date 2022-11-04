@@ -244,3 +244,19 @@ class StateSaver(Analyzer):
 
         self.states[sim.t] = status
 
+def pars_log(x):
+    if x["source"] is None:
+        x["source"] = -1
+    return x
+
+def get_people_dates(peop):
+    """
+    Get array of people dates from covasim people
+    """
+    dates_save=np.rec.fromarrays((peop.date_exposed, peop.date_infectious, 
+                      peop.date_symptomatic, peop.date_severe, peop.date_critical,
+                      peop.date_diagnosed, peop.date_recovered, peop.date_dead),
+          names=("date_exposed", "date_infectious", "date_symptomatic","date_severe", 
+                "date_critical", "date_diagnosed", "date_recovered", "date_dead")
+     )
+    return dates_save
