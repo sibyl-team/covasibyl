@@ -169,7 +169,7 @@ class SibRanker(AbstractRanker):
         titer1 = time.time() - tinit
         conver2 = [False, np.nan]
         tinit = time.time()
-        callback = make_callback(self.damp0, self.maxit0, self.tol, conver2) if self.print_callback is None \
+        callback = make_callback(self.damp1, self.maxit0, self.tol, conver2) if self.print_callback is None \
             else self.print_callback
         sib.iterate(self.f, maxit=self.maxit1, damping=self.damp1, tol=self.tol, 
                     callback=callback)
