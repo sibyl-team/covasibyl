@@ -27,7 +27,10 @@ def append_many_contacts(contacts, fg,N):
         col = contacts["j"]
         lambdas = contacts["m"]
         times = contacts["t"]
-        _append_contacts_nb(fg, row, col, times, lambdas)
+        try:
+            fg.append_contacts_npy(row, col, times, lambdas)
+        except:
+            return False
         return True
     else:
         return False
@@ -112,7 +115,7 @@ class SibRanker(AbstractRanker):
         run_fast = self.faster_ctadd
         if run_fast:
             run_fast = append_many_contacts(daily_contacts,self.f,self.N)
-            print("Used numba loop: ", run_fast)
+            print(f"Used fast contacts: {run_fast}, nc: {len(daily_contacts):3.2e}")
         if not run_fast:
             for c in daily_contacts:
                 self.f.append_contact(*c)
