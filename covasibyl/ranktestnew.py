@@ -265,7 +265,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             self._init_for_sim(sim)
             self.delayed_init = False
 
-        USE_RANKING = (day >= self.start_day)
+        INTERV_ACTIVE = (day >= self.start_day)
         """if not ACTIVE:
             ## observations from the previous day
             self.daily_obs = []"""
@@ -324,10 +324,11 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
 
         obs_ranker = self.tester.get_results(day-1) ## get the correct obs for the ranker
         if self.debug:
-            print(f"Day {day}, active: {USE_RANKING}; n_obs: {len(obs_ranker):d}, num days conts: {len(self.days_cts)}", )
-
+            print(f"Day {day}, active: {INTERV_ACTIVE}; n_obs: {len(obs_ranker):d}, num days conts: {len(self.days_cts)}", )
+        
         print("Day: ", sim.t)
         ### get rank from the algorithm
+        RANK_VALID=False
         if FIND_INFECTED:
             ## transform contacts
             ### put today's date
@@ -335,24 +336,29 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             conts_ranker = conts_prev_day[["i","j","day","m"]].to_records(index=False)
 
             rank_algo = self.ranker.rank(day, conts_ranker, obs_ranker, self.ranker_data)
+            RANK_VALID=True
         elif not HAVE_CONTS:
             print("No contacts to give")
-            if USE_RANKING:
+            if INTERV_ACTIVE:
                 print("Cannot run ranker, we don't have contacts.")
-                USE_RANKING = False
+                INTERV_ACTIVE = False
+            ## Run the ranker anyways (for sib compatibilty) and discard results
+            _ = self.ranker.rank(day, [], obs_ranker, self.ranker_data)
+            
         else:
             self._warn_once("epi_end","Epidemy ended, returning random ranking")
             rank_algo = list(zip(np.arange(N),np.random.rand(N)))
+
         
-        if self._check_epi_tests and USE_RANKING:
+        if self._check_epi_tests and INTERV_ACTIVE:
             ### random test
             self._warn_once("check_epi","Doing random tests for DEV purpose")
             ### Disable normal intervention
-            USE_RANKING = False
+            INTERV_ACTIVE = False
             self.tester._do_random_tests(sim, n_tests=(self.n_tests_algo_day+self.n_tests_rand))
 
         tester_rng = self.tester.randstate
-        if USE_RANKING:
+        if INTERV_ACTIVE:
             
             true_inf = sim.people.infectious
             true_EI = sim.people.exposed # includes I
@@ -406,8 +412,10 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                     if len(rank_good)==0:
                         warnings.warn("No tests from ranker, test_probs: {}".format(sum(test_probs>0)))
 
-                    test_inds_rk = self.choose_tests_ranker(rank_good,sim, test_inds_symp)
-                    
+                    if RANK_VALID:
+                        test_inds_rk = self.choose_tests_ranker(rank_good,sim, test_inds_symp)
+                    else:
+                        test_inds_rk = self.choose_tests_norank(sim, valid, test_inds_symp)
                     ## accuracy
                     ntest_rk = len(test_inds_rk)
                     if ntest_rk > 0:
@@ -482,13 +490,13 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             for s,k in enumerate(["S","I","R"]):
                 day_stats["test_"+k] = stats[s]
             
-            if not USE_RANKING:
+            if not INTERV_ACTIVE:
                 print(f"day {sim.t}")
         #elif self.verbose:
         #    print(f"no obs, t {sim.t}")
         free_birds = len(utils.check_free_birds(sim.people))
         inf_quar = (sim.people.infectious & sim.people.quarantined).sum()
-        if USE_RANKING and self.verbose:
+        if INTERV_ACTIVE and self.verbose:
             print("free {:d}, nQ: {:d}".format(free_birds, sim.people.quarantined.sum()))
         diagnosed_today = (sim.people.date_diagnosed == sim.t) | (self.tester.date_diagnosed == sim.t)
         if callable(self.symp_test):
@@ -527,6 +535,10 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
     
     @abstractmethod
     def choose_tests_ranker(self, ranking, sim, test_inds_symp):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def choose_tests_norank(self, sim, valid_idcs, test_inds_symp):
         raise NotImplementedError()
 
     @abstractmethod
@@ -576,8 +588,11 @@ class RankTester(BaseRankTester):
         **kwargs
         )
         self.n_tests = num_tests
-    
-    def limit_symp_tests(self, test_inds, randgen, ):
+
+        self._mrng_rnd = np.random.RandomState(np.random.PCG64(42))
+
+
+    def limit_symp_tests(self, test_inds, randgen):
         if len(test_inds) > self.n_tests:
             self._warn_once("test_sympt",
                 f"Symptom tests exceeded capacity: got {len(test_inds)} people to test > {self.n_tests}")
@@ -593,6 +608,17 @@ class RankTester(BaseRankTester):
             test_inds_rk = np.empty((0,),dtype=np.int_)
         
         return test_inds_rk
+    
+    def choose_tests_norank(self, sim, valid_idcs, test_inds_symp):
+        n_tests_algo = self.n_tests - len(test_inds_symp)
+        if n_tests_algo > 0:
+            ### extract at random
+            test_inds_rk = self._mrng_rnd.choice(np.array(valid_idcs),n_tests_algo, replace=False)
+        else:
+            test_inds_rk = np.empty((0,),dtype=np.int_)
+        
+        return test_inds_rk
+        
     
     def make_random_tests(self, sim, randgen):
         return tuti.get_random_indcs_test(sim, self.n_tests, randgen)
@@ -648,6 +674,9 @@ class ProbRankTester(BaseRankTester):
             return tests_corr.index.to_numpy()
         else:
             return np.zeros((0,),dtype=np.int_)
+
+    def choose_tests_norank(self, sim, valid_idcs, test_inds_symp):
+        return np.zeros((0,),dtype=np.int_)
 
     def make_random_tests(self, sim, randgen):
         raise ValueError("Cannot do random tests without fixed number of tests")
