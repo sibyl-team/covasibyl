@@ -6,7 +6,7 @@ import covasim.defaults as cvd
 
 import numba as nb
 
-from .utils import choose_w_rng, choose_n_rng
+from .utils import choose_w_rng, choose_n_rng, check_free_birds_EI
 nbint   = cvd.nbint
 
 
@@ -71,3 +71,12 @@ def make_symp_probs_covasim_def(sim, start_day, symp_test_p, pdf, ili_prev, rng)
     test_probs[diag_inds] = 0.0 # People who are diagnosed don't test
 
     return test_probs
+
+def possible_find_infected(sim):
+    """
+    Check if it's possible that there can be new infected after this time instant
+    """
+    nfree_birds = len(check_free_birds_EI(sim.people))
+    v= (nfree_birds == 0 and max(sim["iso_factor"].values()) <=0) or (sum(sim.people.exposed) ==0)
+    return not v
+    

@@ -8,7 +8,7 @@ from covasim.interventions import (Intervention, preprocess_day, process_daily_d
                 get_quar_inds, get_subtargets)
 
 from . import utils, tester
-from .test_utils import make_symp_probs_covasim_def
+from .test_utils import make_symp_probs_covasim_def, possible_find_infected
 
 class TestProb(Intervention):
     '''
@@ -116,6 +116,10 @@ class TestProb(Intervention):
         elif end_day is not None and t > end_day:
             return
 
+
+        FIND_INFECT = possible_find_infected(sim)
+        if not FIND_INFECT:
+            return
         # Find probablity for symptomatics to be tested
         symp_inds  = cvu.true(sim.people.symptomatic)
         symp_prob = self.symp_prob

@@ -12,7 +12,7 @@ from covasim.interventions import (Intervention, preprocess_day, process_daily_d
 
 from .tester import CovasimTester
 from .utils import choose_w_rng, randround_rng
-from .test_utils  import find_ili_inds, get_symp_probs, make_symp_probs_covasim_def
+from .test_utils  import find_ili_inds, get_symp_probs, make_symp_probs_covasim_def, possible_find_infected
 
 def choose_probs(test_probs, randgen):
     return cvu.true(
@@ -185,7 +185,7 @@ class TestProbNum(Intervention):
                 self.hist.append(day_stats)
             return
 
-
+        FIND_INFECT = possible_find_infected(sim)
         ## test for symptomatics first
         # Calculate test probabilities for people with symptoms
         symp_inds = cvu.true(sim.people.symptomatic)
@@ -197,11 +197,14 @@ class TestProbNum(Intervention):
         #print(f"Symp probs: {symp_prob}, nposstest={(test_probs > 0).sum()}")
 
         #test_inds_sym = cvu.true(cvu.binomial_arr(test_probs))
-
-        test_inds_sym = choose_probs(test_probs,tester_rng)
-        if len(test_inds_sym) > n_tests_all:
-            tester_rng.shuffle(test_inds_sym)
-            test_inds_sym = test_inds_sym[:n_tests_all]
+        if FIND_INFECT:
+            test_inds_sym = choose_probs(test_probs,tester_rng)
+            if len(test_inds_sym) > n_tests_all:
+                tester_rng.shuffle(test_inds_sym)
+                test_inds_sym = test_inds_sym[:n_tests_all]
+        else:
+            print("No infect to find")
+            test_inds_sym = np.empty((0,), dtype=np.int_)
 
         
         ntests_rand = n_tests_all - len(test_inds_sym)
@@ -211,7 +214,7 @@ class TestProbNum(Intervention):
         test_inds = test_inds_sym
         day_stats["nI_symp"] = ntrue_I
 
-        if ntests_rand > 0:
+        if ntests_rand > 0 and FIND_INFECT:
             ## do random tests
             test_probs_rnd = np.ones(sim.n) # Begin by assigning equal testing weight (converted to a probability) to everyone
             diag_inds = cvu.true(sim.people.diagnosed)
