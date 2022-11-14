@@ -407,7 +407,8 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                     #test_probs[test_inds_symp] = 0.
                     ## get from rank
                     valid = set(range(N)).difference(idx_diagnosed).difference(test_inds_symp)
-                    rank_good = rank_proc[list(valid)].sort_values(ascending=False)
+                    valid = list(valid) ## convert to list to avoid issues with numpy
+                    rank_good = rank_proc[valid].sort_values(ascending=False)
 
                     if len(rank_good)==0:
                         warnings.warn("No tests from ranker, test_probs: {}".format(sum(test_probs>0)))
