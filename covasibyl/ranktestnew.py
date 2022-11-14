@@ -319,9 +319,10 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         if self.iso_cts_strength > 0:
             FIND_INFECTED = (sim.people.infectious.sum() > 0 or sim.people.exposed.sum()>0)
         else:
+            ## with no free birds, there is no chance of having new infected
             nfreeb=len(utils.check_free_birds_EI(sim.people))
             if nfreeb == 0:
-                self._warn_once("end_freeb", "Have no free birds, not using ranker anymore")
+                self._warn_once("end_freeb", "Have no free birds and `f_iso` is 0, not using ranker anymore")
             FIND_INFECTED =  nfreeb > 0
         FIND_INFECTED = FIND_INFECTED and HAVE_CONTS
 
@@ -370,8 +371,12 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             rank_df = pd.DataFrame(rank_algo, columns=["idx","rank"]).set_index("idx")
             rank_proc = rank_df["rank"].sort_index()
             ### compute AUC immediately
-            auc_inf, auc_EI = calc_aucs(true_inf, true_EI, rank_proc,)
-            auc_i_ni, auc_ei_ni = calc_aucs(true_inf, true_EI, rank_proc,  idx_exclude=self.get_idx_obs_I())
+            if RANK_VALID:
+                auc_inf, auc_EI = calc_aucs(true_inf, true_EI, rank_proc,)
+                auc_i_ni, auc_ei_ni = calc_aucs(true_inf, true_EI, rank_proc,  idx_exclude=self.get_idx_obs_I())
+            else:
+                auc_inf, auc_EI = np.nan, np.nan
+                auc_i_ni, auc_ei_ni = np.nan, np.nan
             print("day {}: AUC_rk(I,EI): ({:4.3f},{:4.3f}), ".format(day, auc_inf, auc_EI), end="")
             ## Do rand tests
             
@@ -385,8 +390,15 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                 
                 ## save true number of infected found
                 day_stats["nt_rand"] = true_inf[test_indcs_all].sum()
+            elif not FIND_INFECTED:
+                ## not using rank, nor random, nor symptomatics only
+                self._warn_once("no_findinf", "Do not have to find infected, halting all tests")
+                day_stats["nt_rand"] = 0
 
+                test_indcs_all = []
+                print(f"nI: {sum(true_inf)}, nEI: {sum(true_EI)}", end=" ")
             else:
+                self._warned["no_findinf"] = False
                 ## NO RANDOM TESTS
                 test_probs = np.zeros(N)
                 # Symptomatics test
@@ -468,7 +480,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             self._warn_once("no_tests_todo","No more infected, ending testing")
             test_indcs_all = []
         elif len(test_indcs_all) == 0:
-            print("No tests performed")
+            print("ntests: 0", end=" ")
         self.tester.run_tests(sim, test_indcs_all,
                     test_sensitivity=self.sensitivity,
                     test_specificity=self.specificity,
@@ -526,6 +538,9 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         self.conts_prev_day = contacts_df
 
     def get_idx_obs_I(self):
+        """
+        Get indices of people observed as infectious
+        """
         test_stats = self.tester.get_all_stats()
         if len(test_stats) > 0:
             return np.unique(test_stats[test_stats["res_state"]==1]["i"])
