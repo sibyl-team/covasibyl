@@ -74,6 +74,9 @@ def ranking_tracing_faster(t, transmissions, observations, tau, rng):
                           (np.zeros(nt,dtype=int), list(last_tested))), shape=(1,N) )
     c = 0
     for t_c in range(t-tau, t):
+        # skip empty matrices
+        if transmissions[t_c].nnz==0:
+            continue
         ## number of contacts with the positive individual at time t_c
         x = (test_pos).dot(transmissions[t_c]>0)
         c+= x #(x>0).astype(float)
@@ -82,7 +85,12 @@ def ranking_tracing_faster(t, transmissions, observations, tau, rng):
         x = (test_pos).dot(transmissions[t_c])
         c+= (x>0).astype(float)
     """
-    scores = c.toarray()[0]
+    try:
+        scores = c.toarray()[0]
+    except AttributeError:
+        ## c is still 0
+        print("the sum of transmissions is: ",c)
+        scores = rng.rand(N)*1e-3
     return scores
 
 
@@ -111,8 +119,10 @@ class TracingRanker(AbstractRanker):
         #check_inputs(t_day, daily_contacts, daily_obs)
         # append daily_contacts and daily_obs
         
-
-        daily_transmissions = contacts_rec_to_csr(self.N, daily_contacts, self.lamb)
+        if len(daily_contacts) > 0:
+            daily_transmissions = contacts_rec_to_csr(self.N, daily_contacts, self.lamb)
+        else:
+            daily_transmissions = csr_matrix((self.N, self.N))
         self.transmissions.append(daily_transmissions)
         self.observations += [
             dict(i=i, s=s, t_test=t_test) for i, s, t_test in daily_obs
