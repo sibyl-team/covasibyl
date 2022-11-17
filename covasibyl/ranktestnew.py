@@ -386,16 +386,18 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             if self.only_random:
                 self._warn_once("random_tests", "Doing random tests instead of symptomatics+ranker")
                 ## get random tests
-                test_indcs_all = self.make_random_tests(sim, tester_rng)
+                test_idcs_rnd = self.make_random_tests(sim, tester_rng)
                 
                 ## save true number of infected found
-                day_stats["nt_rand"] = true_inf[test_indcs_all].sum()
+                day_stats["nt_rand"] = true_inf[test_idcs_rnd].sum()
+                tests_perform = {"rnd": test_idcs_rnd}
             elif not FIND_INFECTED:
                 ## not using rank, nor random, nor symptomatics only
                 self._warn_once("no_findinf", "Do not have to find infected, halting all tests")
                 day_stats["nt_rand"] = 0
 
-                test_indcs_all = []
+                #test_indcs_all = []
+                tests_perform = []
                 print(f"nI: {sum(true_inf)}, nEI: {sum(true_EI)}", end=" ")
             else:
                 self._warned["no_findinf"] = False
@@ -410,11 +412,12 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                     tester_rng.random(len(test_probs)) < test_probs
                 )
                 test_inds_symp = self.limit_symp_tests(test_inds_symp, tester_rng)
-            
+
+                tests_perform = {"symp": test_inds_symp}
                 if self.only_symptom:
                     self._warn_once("only_sympt", "Only symptomatic testing")
                     ## Don't run algo
-                    test_indcs_all = test_inds_symp
+                    #test_indcs_all = test_inds_symp
                 else:
                     ### Ranker tests
 
@@ -442,7 +445,8 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                             print("n_I_rk: {}, accu {:.2%}".format(true_inf_rk, accu_rk) ,
                             end=" ")
                     ### pull together the tests
-                    test_indcs_all = np.concatenate((test_inds_symp, test_inds_rk))
+                    #test_indcs_all = np.concatenate((test_inds_symp, test_inds_rk))
+                    tests_perform["rank"] = test_inds_rk
 
                 ## concatenate tests
                 day_stats["nt_rand"] = len(test_inds_symp)
@@ -459,7 +463,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             
             
             if self.extra_stats_fn:
-                    self.extra_stats[day] = self.extra_stats_fn(sim,rank_proc,test_indcs_all)
+                    self.extra_stats[day] = self.extra_stats_fn(sim,rank_proc,tests_perform)
             ### test actually
             #if not self.only_symptom:
             #    assert len(np.unique(test_indcs_all)) == self.n_tests
@@ -469,19 +473,20 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         else:
             ### Before intervention, giving only symptomatics
             ## If we aren't asked to give only random tests
-            test_indcs_all =[]
+            tests_perform =[]
             if not self.only_random:
-                probs, test_indcs_all = self.draw_probs_symptom(sim, tester_rng, self.symp_test)
-                print(f"n tests sympt: {len(test_indcs_all)}")
-                day_stats["nt_rand"] = len(test_indcs_all)
+                probs, test_inds_symp = self.draw_probs_symptom(sim, tester_rng, self.symp_test)
+                print(f"n tests sympt: {len(test_inds_symp)}")
+                tests_perform = {"symp": test_inds_symp}
+                day_stats["nt_rand"] = len(test_inds_symp)
             
         ## this tests the individuals today
         if sum(sim.people.infectious | sim.people.exposed)==0:
             self._warn_once("no_tests_todo","No more infected, ending testing")
-            test_indcs_all = []
-        elif len(test_indcs_all) == 0:
+            tests_perform = []
+        elif len(tests_perform) == 0:
             print("ntests: 0", end=" ")
-        self.tester.run_tests(sim, test_indcs_all,
+        self.tester.run_tests(sim, tests_perform,
                     test_sensitivity=self.sensitivity,
                     test_specificity=self.specificity,
                     loss_prob=self.loss_prob, test_delay=self.test_delay)

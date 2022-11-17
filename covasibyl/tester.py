@@ -75,6 +75,29 @@ def get_default_test_p_sym(sim, t, symp_test, test_pdf, test_probs=None):
     test_probs[symp_inds] *= symp_test # Update the test probabilities
     return test_probs
 
+def compact_test_dict(idcs_dict):
+    """
+    Read dict of tests and get the source for each test
+    """
+    test_all = None
+    #sources_test = {}
+    src_idx_all = []
+    c=0
+    for k in idcs_dict.keys():
+        ii = np.unique(idcs_dict[k])
+        if test_all is None:
+            test_all = ii
+        else:
+            if len(np.intersect1d(ii,test_all)) != 0:
+                raise ValueError("Testing same individual more than once")
+            test_all = np.concatenate((test_all, ii))
+        #sources_test[c] =k
+        src_idx_all.append(np.full(len(ii), k))
+        c+=1
+   
+    idcs= np.concatenate(src_idx_all)
+    ordin=np.argsort(test_all)
+    return test_all[ordin], idcs[ordin]
 class CovasimTester:
 
     def __init__(self, sim, seed=None, contain=True, warn_diag=True):
@@ -124,15 +147,24 @@ class CovasimTester:
 
 
         Args:
-            inds: indices of who to test
+            inds: indices of who to test, can be a list-like or a dict of lists
             test_sensitivity (float): probability of a true positive
             test_specificity (float): probability of a true negative
             loss_prob (float): probability of loss to follow-up
             test_delay (int): number of days before test results are ready
         '''
+        try:
+            inds_all, src_tests = compact_test_dict(inds)
+            inds = inds_all
+                #source_all.append([k]*)
+        except AttributeError:
+            ### we have a list
+            inds = np.unique(inds)
+            #sources_test = {0: "unk"}
+            src_tests = np.full(len(inds), "u")
         people = sim.people
         today = sim.t
-        inds = np.unique(inds)
+        ## inds now contains all tests
         num_tests = len(inds)
         if num_tests == 0:
             ### Do nothing
@@ -160,6 +192,7 @@ class CovasimTester:
         today_tests["t_state"] = "U"
         today_tests["res_state"] = -2
         today_tests.set_index("i", inplace=True)
+        today_tests["src_test"] = src_tests
         #if(num_lost > 1):
         #    print(f"Lost {num_lost} tests")
         ## exposed individuals remain exposed when infectious
