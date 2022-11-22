@@ -5,6 +5,8 @@ import numba as nb
 #import scipy.sparse as sp
 from .template_rank import AbstractRanker
 
+from datetime import timedelta
+
 def make_callback(damp, maxit, tol,conv_arr):
     def print_spec(t,e,f):
         print(f"sib.iterate(damp={damp}):  {t}/{maxit} {e:1.3e}/{tol}", end='    \r', flush=True)
@@ -193,7 +195,8 @@ class SibRanker(AbstractRanker):
 
         data["logger"].info(f"winBP: (S,I,R): ({bpS:.1f}, {bpI:.1f}, {bpR:.1f}), seeds: {nseed:.1f}, ll: {ll:.1f}")
         if self.dbg_t:
-            data["logger"].info(f"Time taken:\n\tadd obs: {tobs:4.3e}, add contacts: {tconts:4.3e}, fake obs:{tfakeobs:4.3e}"+\
+            alltime = timedelta(seconds=int(sum(times_all.values())))
+            data["logger"].info(f"Time taken: {alltime}, detail:\n\tadd obs: {tobs:4.3e}, add contacts: {tconts:4.3e}, fake obs:{tfakeobs:4.3e}"+\
             f"\n\ttdropobs: {tdrop:4.3e}, t iter1: {titer1:4.3e} t iter2: {titer2:4.3e}, margs: {times_all['margs']:4.3e}")
         self.bpSs[t_day] = bpS
         self.bpIs[t_day] = bpI
