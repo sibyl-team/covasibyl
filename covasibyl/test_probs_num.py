@@ -52,7 +52,7 @@ class TestProbNum(Intervention):
         interv = cv.test_num(daily_tests='swabs_per_day') # Take number of tests from loaded data using a custom column name
     '''
 
-    def __init__(self, daily_tests, symp_test_p=0.5, quar_test=100.0, quar_policy=None, subtarget=None,
+    def __init__(self, daily_tests,base_p_test=(0.5/80), symp_test_p=0.5, quar_test_p=None, quar_policy=None, subtarget=None,
                  ili_prev=None, sensitivity=1.0, specificity=1.0, loss_prob=0, test_delay=0, contain=True,
                  start_day=0, end_day=None, swab_delay=None, init_sympt=False, 
                  nfixed_rand_tests=0, save_test_probs=False, no_rnd_tests=False,no_testing=False,**kwargs):
@@ -61,7 +61,8 @@ class TestProbNum(Intervention):
         super().__init__(**kwargs) # Initialize the Intervention object
         self.daily_tests = daily_tests # Should be a list of length matching time
         self.symp_test_p   = symp_test_p   # Set probability of testing symptomatics
-        self.quar_test   = quar_test # Probability of testing people in quarantine
+        self.quar_test_p   = quar_test_p if quar_test_p else base_p_test# Probability of testing people in quarantine
+        self.base_test_p = base_p_test # Probability of being tested if not symptoms and not quarantined
         self.quar_policy = quar_policy if quar_policy else 'start'
         self.subtarget   = subtarget  # Set any other testing criteria
         self.ili_prev    = ili_prev     # Should be a list of length matching time or a float or a dataframe
@@ -84,6 +85,9 @@ class TestProbNum(Intervention):
         self.hist = None
         self._warned = None
 
+        if quar_test_p > 1:
+            raise ValueError("Probability of testing cannot be > 1 for quarantine.")
+
     def _warn_once(self, key:str, message:str):
         if not self._warned[key]:
             warnings.warn(message)
@@ -105,6 +109,9 @@ class TestProbNum(Intervention):
 
         self.mtester = CovasimTester(sim, contain=self.mitigate)
         self.extra_rng = np.random.RandomState(np.random.PCG64(3))
+        
+        self._ratios = {"quar": self.quar_test_p/self.base_test_p,
+            "symp": self.symp_test_p/self.base_test_p}
 
         self.hist =[]
         self.tested_idcs_rnd = {}
@@ -219,15 +226,19 @@ class TestProbNum(Intervention):
             test_probs_rnd = np.ones(sim.n) # Begin by assigning equal testing weight (converted to a probability) to everyone
             diag_inds = cvu.true(sim.people.diagnosed)
             symp_prob = get_symp_probs(sim, self.symp_test_p, self.pdf)
+            
+            test_probs_rnd[symp_inds] *= (symp_prob/self.symp_test_p)*self._ratios["symp"]          # People with symptoms (true positive)
+            
+            test_probs_rnd[ili_inds]  *= self._ratios["symp"]
             # Handle quarantine testing
             quar_test_inds = get_quar_inds(self.quar_policy, sim)
-            test_probs_rnd[quar_test_inds] *= self.quar_test
-
-            test_probs_rnd[symp_inds]       = (symp_prob/self.symp_test_p)*80*(self.quar_test/144)          # People with symptoms (true positive)
-            test_probs_rnd[ili_inds]        = 80*(self.quar_test/144)
-            # Don't rediagnose people
-            test_probs_rnd[diag_inds] = 0.
-            test_probs_rnd[test_inds_sym] = 0.
+            test_probs_rnd[quar_test_inds] *= self._ratios["quar"]
+            
+            if not self.no_rnd_tests:
+                # Don't rediagnose people
+                test_probs_rnd[diag_inds] = 0.
+                ## we are doing tests, exclude sympt testing
+                test_probs_rnd[test_inds_sym] = 0.
             
             ntp = (test_probs_rnd!=0).sum()
             if ntp < ntests_rand:

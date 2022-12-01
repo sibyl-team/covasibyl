@@ -67,6 +67,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                 verbose=True,
                 mitigate=True,
                 only_sympt=False,
+                only_random_tests=False,
                 adoption_fraction=1.,
                 no_diag_test=False,
                 **kwargs
@@ -113,7 +114,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             self._obs_source=False
         self.mitigate = mitigate
         self._check_epi_tests = kwargs["check_epi_tests"] if "check_epi_tests" in kwargs else False
-        self.only_random = kwargs["only_random_tests"] if "only_random_tests" in kwargs else False
+        self.only_random = only_random_tests
         self.give_Trel = kwargs["give_t_rel"] if "give_t_rel" in kwargs else False
         self.only_symptom = only_sympt
         if self.only_random and self.only_symptom:
@@ -591,6 +592,7 @@ class RankTester(BaseRankTester):
                 verbose=True,
                 mitigate=True,
                 only_sympt=False,
+                only_random_tests=False,
                 adoption_fraction=1.,
                 **kwargs
                 ):
@@ -608,6 +610,7 @@ class RankTester(BaseRankTester):
         verbose=verbose,
         mitigate=mitigate,
         only_sympt=only_sympt,
+        only_random_tests=only_random_tests,
         adoption_fraction=adoption_fraction,
         **kwargs
         )
