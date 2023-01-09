@@ -187,17 +187,17 @@ class CovasimTester:
         inds_test = inds[not_lost]
         num_lost = np.logical_not(not_lost).sum()
 
-        today_tests = pd.DataFrame(inds, columns=["i"])
-        today_tests["date_req"] = sim.t
-        today_tests["t_state"] = "U"
-        today_tests["res_state"] = -2
-        today_tests.set_index("i", inplace=True)
-        today_tests["src_test"] = src_tests
+        today_stats = pd.DataFrame(inds, columns=["i"])
+        today_stats["date_req"] = sim.t
+        today_stats["t_state"] = "U"
+        today_stats["res_state"] = -2
+        today_stats.set_index("i", inplace=True)
+        today_stats["src_test"] = src_tests
         #if(num_lost > 1):
         #    print(f"Lost {num_lost} tests")
         ## exposed individuals remain exposed when infectious
 
-        write_tests_state(people, today_tests, inds_test)
+        write_tests_state(people, today_stats, inds_test)
 
         ## check susceptibles
         ## exposed people remain exposed when infectious on covasim
@@ -249,16 +249,16 @@ class CovasimTester:
         res_tests_t.extend((i, 2, today) for i in res_recov)
         
 
-        today_tests.loc[res_susc, "res_state"] = 0
-        today_tests.loc[res_infected, "res_state"] = 1
-        today_tests.loc[res_recov, "res_state"] = 2
-        today_tests["date_res"] = sim.t + test_delay
+        today_stats.loc[res_susc, "res_state"] = 0
+        today_stats.loc[res_infected, "res_state"] = 1
+        today_stats.loc[res_recov, "res_state"] = 2
+        today_stats["date_res"] = sim.t + test_delay
 
         ## handle diagnosed
         diag_inds  = people.check_inds(self.diagnosed, self.date_diagnosed, filter_inds=None) # Find who was actually diagnosed on this timestep
         self.diagnosed[diag_inds] = True
 
-        self.tests_stats.append(today_tests.to_records())
+        self.tests_stats.append(today_stats.to_records())
 
         return num_lost
 
