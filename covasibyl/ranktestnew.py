@@ -568,6 +568,9 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
 
     @abstractmethod
     def limit_symp_tests(self, test_inds, randgen):
+        """
+        Decide which symptomatic tests to remove
+        """
         raise NotImplementedError()
 
     @abstractmethod
@@ -594,6 +597,7 @@ class RankTester(BaseRankTester):
                 only_sympt=False,
                 only_random_tests=False,
                 adoption_fraction=1.,
+                ntest_rk_only=False,
                 **kwargs
                 ):
         super().__init__(ranker,label=label,
@@ -617,10 +621,15 @@ class RankTester(BaseRankTester):
         self.n_tests = num_tests
 
         self._mrng_rnd = np.random.RandomState(np.random.PCG64(42))
+        self.ntest_rk_only = ntest_rk_only
+
 
 
     def limit_symp_tests(self, test_inds, randgen):
-        if len(test_inds) > self.n_tests:
+        if self.ntest_rk_only:
+            ## do not limit the number of tests
+            return test_inds
+        elif (len(test_inds) > self.n_tests):
             self._warn_once("test_sympt",
                 f"Symptom tests exceeded capacity: got {len(test_inds)} people to test > {self.n_tests}")
             randgen.shuffle(test_inds)
@@ -628,7 +637,13 @@ class RankTester(BaseRankTester):
         return test_inds
 
     def choose_tests_ranker(self, ranking, sim, test_inds_symp):
-        n_tests_algo = self.n_tests - len(test_inds_symp)
+        
+        if self.ntest_rk_only:
+            ## ntests only for algo
+            n_tests_algo = self.n_tests
+        else:
+            n_tests_algo = self.n_tests - len(test_inds_symp)
+        
         if n_tests_algo > 0:
             test_inds_rk = ranking.iloc[:n_tests_algo].index.to_numpy()
         else:
@@ -637,7 +652,12 @@ class RankTester(BaseRankTester):
         return test_inds_rk
     
     def choose_tests_norank(self, sim, valid_idcs, test_inds_symp):
-        n_tests_algo = self.n_tests - len(test_inds_symp)
+        if self.ntest_rk_only:
+            ## ntests only for algo
+            n_tests_algo = self.n_tests
+        else:
+            n_tests_algo = self.n_tests - len(test_inds_symp)
+
         if n_tests_algo > 0:
             ### extract at random
             test_inds_rk = self._mrng_rnd.choice(np.array(valid_idcs),n_tests_algo, replace=False)
