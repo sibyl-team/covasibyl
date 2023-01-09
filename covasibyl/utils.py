@@ -1,10 +1,12 @@
 import subprocess
+import warnings
 from pathlib import Path
 
 import numpy as np
 import scipy.sparse as sp
 from scipy.special import gamma as gamma_f
 import pandas as pd
+from numba import njit
 
 
 def get_git_revision_hash() -> str:
