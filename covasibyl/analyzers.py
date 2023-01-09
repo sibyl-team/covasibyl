@@ -11,7 +11,7 @@ from covasim.interventions import get_day
 from covasibyl import utils
 import covasim.utils as cvu
 
-
+from .analysis_utils import get_people_dates
 class store_seir(Analyzer):
 
     def __init__(self, printout=False, *args, **kwargs):
@@ -249,14 +249,3 @@ def pars_log(x):
         x["source"] = -1
     return x
 
-def get_people_dates(peop):
-    """
-    Get array of people dates from covasim people
-    """
-    dates_save=np.rec.fromarrays((peop.date_exposed, peop.date_infectious, 
-                      peop.date_symptomatic, peop.date_severe, peop.date_critical,
-                      peop.date_diagnosed, peop.date_recovered, peop.date_dead),
-          names=("date_exposed", "date_infectious", "date_symptomatic","date_severe", 
-                "date_critical", "date_diagnosed", "date_recovered", "date_dead")
-     )
-    return dates_save
