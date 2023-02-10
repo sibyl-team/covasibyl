@@ -218,7 +218,7 @@ class SibRanker(AbstractRanker):
         if self.tau:
             day_start = lambda idx: max(idx - self.tau, 0)
             idx_day = lambda n, t: list(n.times).index(t)
-            inf_prob = np.array([[i_n, sum(n.bt[day_start(idx_day(n, t_day)):idx_day(n, t_day)])] for i_n, n in enumerate(self.f.nodes)])
+            inf_prob = [[i_n, sum(n.bt[day_start(idx_day(n, t_day)):idx_day(n, t_day)])] for i_n, n in enumerate(self.f.nodes)]
         else:
             inf_prob = [[i, marg[i,1]] for i in range(self.N)]
             
