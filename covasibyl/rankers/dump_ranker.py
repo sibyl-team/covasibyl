@@ -10,7 +10,7 @@ class DumpRanker(AbstractRanker):
 
     def __init__(self,t_dump, save_name="rankdump",
                 lamb = 0.99):
-        self.description = "class for tracing greedy inference of openABM loop"
+        self.description = "class for dumping contacts and observations"
         self.t_dump=t_dump
         self.lamb = lamb
         self.rng = np.random.RandomState(1)
@@ -50,17 +50,21 @@ class DumpRanker(AbstractRanker):
         Save contacts in a pandas dataframe
         This is slower than numpy but easier to handle
         """
-        mtype = np.dtype([(k, "int") for k in ["i","j","t"]]+[("lambda", "float")])
-        if isinstance(daily_contacts, np.recarray):
-            cts_d = daily_contacts.copy()
-            cts_d.dtype.names = "i", "j", "t", "lambda"
-            
+        conts_dtype = np.dtype([(k, "int") for k in ["i","j","t"]]+[("lambda", "float")])
+        if len(daily_contacts) > 0:
+            if isinstance(daily_contacts, np.recarray):
+                cts_d = daily_contacts.copy()
+                cts_d.dtype.names = "i", "j", "t", "lambda"
+                
+            else:
+                cts_d = np.array(daily_contacts,dtype=conts_dtype)
         else:
-            cts_d = np.array(daily_contacts,dtype=mtype)
+            cts_d = np.empty((0,), dtype=conts_dtype)
+            #print("New contacts: ", cts_d)
 
         assert len(cts_d) == len(daily_contacts)
         print(f"{len(cts_d)} new contacts,", end=" ")
-        if self.contacts is None:
+        if self.contacts is None or len(self.contacts)==0:
             self.contacts = cts_d
         else:
             self.contacts = np.concatenate((self.contacts, cts_d))

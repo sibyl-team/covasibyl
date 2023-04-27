@@ -54,8 +54,7 @@ class GreedyRanker(AbstractRanker):
     '''
     def _save_contacts(self, daily_contacts):
         """
-        Save contacts in a pandas dataframe
-        This is slower than numpy but easier to handle
+        Save contacts in a numpy arrays
         """
         conts_dtype = np.dtype([(k, "int") for k in ["i","j","t"]]+[("lambda", "float")])
         if len(daily_contacts) > 0:
