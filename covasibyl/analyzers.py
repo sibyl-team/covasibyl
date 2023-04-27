@@ -12,6 +12,7 @@ from covasibyl import utils
 import covasim.utils as cvu
 
 from .analysis_utils import get_people_dates
+from .utils import set_seed_numba
 class store_seir(Analyzer):
 
     def __init__(self, printout=False, *args, **kwargs):
@@ -25,6 +26,7 @@ class store_seir(Analyzer):
         self.IND = []
         self.Efree = []
         self.printout=printout
+        self.mrng = np.random.RandomState(np.random.PCG64(2))
         return
 
     def apply(self, sim):
@@ -40,7 +42,7 @@ class store_seir(Analyzer):
         EIfree = self.IND[-1]+self.Efree[-1]
         if (self.printout):
             print(f"day {sim.t} -> I (free): {self.I[-1]} ({self.IND[-1]}),"+\
-                f" E+I (free): {self.I[-1]+self.E[-1]} ({EIfree}) R: {self.R[-1]}")      
+                f" E+I (free): {self.I[-1]+self.E[-1]} ({EIfree}) R: {self.R[-1]}") 
         return
 
     def plot(self, **args):

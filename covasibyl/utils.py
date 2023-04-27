@@ -7,6 +7,7 @@ import scipy.sparse as sp
 from scipy.special import gamma as gamma_f
 import pandas as pd
 from numba import njit
+from numba import types as nbtypes
 
 
 def get_git_revision_hash() -> str:
@@ -296,3 +297,11 @@ def randround_rng(x, rng):
     else:
         output = int(np.floor(x+rng.random()))
     return output
+
+@njit()
+def get_seed_numba():
+    return np.random.get_state()
+
+@njit((nbtypes.int_,))
+def set_seed_numba(seed):
+    return np.random.seed(seed)
