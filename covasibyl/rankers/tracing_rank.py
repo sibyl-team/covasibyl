@@ -47,7 +47,7 @@ def ranking_tracing(t, transmissions, observations, tau, rng):
     return scores
 
 
-def ranking_tracing_faster(t, transmissions, observations, tau, rng):
+def ranking_tracing_faster(t, transmissions, observations, tau, rng, noise=1e-4):
     """Naive contact tracing.
 
     Search for all individuals that have been in contact during [t-tau, t]
@@ -86,11 +86,11 @@ def ranking_tracing_faster(t, transmissions, observations, tau, rng):
         c+= (x>0).astype(float)
     """
     try:
-        scores = c.toarray()[0]
+        scores = c.toarray()[0] + rng.rand(N)*noise
     except AttributeError:
         ## c is still 0
         print("the sum of transmissions is: ",c)
-        scores = rng.rand(N)*1e-3
+        scores = rng.rand(N)
     return scores
 
 
