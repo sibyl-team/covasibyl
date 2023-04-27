@@ -127,6 +127,10 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         if self.debug:
             print("Ranker iso factor: ",self.iso_cts_strength)
 
+    @staticmethod
+    def _comp_flag():
+        return "rksym"
+
     def _init_for_sim(self, sim):
         """
         initialize the ranker
@@ -164,10 +168,6 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
             raise ValueError("Not initialized")
         
         return self.has_app.copy()
-
-    @staticmethod
-    def _comp_flag():
-        return "rksym"
 
     def to_json(self):
         '''
@@ -280,6 +280,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
 
         conts_prev_day = self.conts_prev_day
         HAVE_CONTS = conts_prev_day is not None
+        #print(f"Interv day {day} random state: {np.random.get_state()[1][-4:]}")
         ## process old contacts
         if HAVE_CONTS:
             ## remove contacts for people that do not have the app
@@ -445,9 +446,9 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                         if self.verbose:
                             print("n_I_rk: {}, accu {:.2%}".format(true_inf_rk, accu_rk) ,
                             end=" ")
-                    ### pull together the tests
-                    #test_indcs_all = np.concatenate((test_inds_symp, test_inds_rk))
-                    tests_perform["rank"] = test_inds_rk
+                        ### pull together the tests
+                        #test_indcs_all = np.concatenate((test_inds_symp, test_inds_rk))
+                        tests_perform["rank"] = test_inds_rk
 
                 ## concatenate tests
                 day_stats["nt_rand"] = len(test_inds_symp)

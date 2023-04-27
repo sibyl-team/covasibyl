@@ -55,7 +55,9 @@ class TestProbNum(Intervention):
     def __init__(self, daily_tests,base_p_test=(0.5/80), symp_test_p=0.5, quar_test_p=None, quar_policy=None, subtarget=None,
                  ili_prev=None, sensitivity=1.0, specificity=1.0, loss_prob=0, test_delay=0, contain=True,
                  start_day=0, end_day=None, swab_delay=None, init_sympt=False, 
-                 nfixed_rand_tests=0, save_test_probs=False, no_rnd_tests=False,no_testing=False,**kwargs):
+                 nfixed_rand_tests=0, save_test_probs=False, no_rnd_tests=False,no_testing=False,
+                 ntest_nosymp=False,
+                 **kwargs):
         
         
         super().__init__(**kwargs) # Initialize the Intervention object
@@ -84,6 +86,7 @@ class TestProbNum(Intervention):
         self.tested_idcs_rnd = None
         self.hist = None
         self._warned = None
+        self.ntest_nosymp = ntest_nosymp
 
         if quar_test_p > 1:
             raise ValueError("Probability of testing cannot be > 1 for quarantine.")
@@ -214,7 +217,10 @@ class TestProbNum(Intervention):
             test_inds_sym = np.empty((0,), dtype=np.int_)
 
         
-        ntests_rand = n_tests_all - len(test_inds_sym)
+        if self.ntest_nosymp:
+            ntests_rand = n_tests_all
+        else:
+            ntests_rand = n_tests_all - len(test_inds_sym)
         ntrue_I = len(cvu.itruei(sim.people.symptomatic, test_inds_sym))
         inf_diag = (sim.people.symptomatic & sim.people.diagnosed)
         #print(f"day {sim.t}, test inf: {ntrue_I} tot inf free: {sim.people.symptomatic.sum() - inf_diag.sum()}")
