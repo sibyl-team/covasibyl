@@ -56,7 +56,7 @@ class TestProbNum(Intervention):
                  ili_prev=None, sensitivity=1.0, specificity=1.0, loss_prob=0, test_delay=0, contain=True,
                  start_day=0, end_day=None, swab_delay=None, init_sympt=False, 
                  nfixed_rand_tests=0, save_test_probs=False, no_rnd_tests=False,no_testing=False,
-                 ntest_nosymp=False,
+                 #ntest_nosymp=False,
                  **kwargs):
         
         
@@ -86,7 +86,7 @@ class TestProbNum(Intervention):
         self.tested_idcs_rnd = None
         self.hist = None
         self._warned = None
-        self.ntest_nosymp = ntest_nosymp
+        #self.ntest_nosymp = ntest_nosymp
 
         if quar_test_p > 1:
             raise ValueError("Probability of testing cannot be > 1 for quarantine.")
@@ -182,9 +182,9 @@ class TestProbNum(Intervention):
 
                 test_inds_sym = choose_probs(test_probs,tester_rng)
                 ## Limit symptomatic tests
-                if len(test_inds_sym) > n_tests_all:
-                    tester_rng.shuffle(test_inds_sym)
-                    test_inds_sym = test_inds_sym[:n_tests_all]
+                #if len(test_inds_sym) > n_tests_all:
+                #    tester_rng.shuffle(test_inds_sym)
+                #    test_inds_sym = test_inds_sym[:n_tests_all]
 
                 ### Test
                 if not self.no_testing:
@@ -217,10 +217,10 @@ class TestProbNum(Intervention):
             test_inds_sym = np.empty((0,), dtype=np.int_)
 
         
-        if self.ntest_nosymp:
-            ntests_rand = n_tests_all
-        else:
-            ntests_rand = n_tests_all - len(test_inds_sym)
+        #if self.ntest_nosymp:
+        ntests_rand = n_tests_all
+        #else:
+        #    ntests_rand = n_tests_all - len(test_inds_sym)
         ntrue_I = len(cvu.itruei(sim.people.symptomatic, test_inds_sym))
         inf_diag = (sim.people.symptomatic & sim.people.diagnosed)
         #print(f"day {sim.t}, test inf: {ntrue_I} tot inf free: {sim.people.symptomatic.sum() - inf_diag.sum()}")
