@@ -129,7 +129,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
 
     @staticmethod
     def _comp_flag():
-        return "rksym"
+        return "rksymse"
 
     def _init_for_sim(self, sim):
         """
@@ -254,7 +254,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         test_inds_symp = cvu.true(
                     randgen.random(len(test_probs)) < test_probs
                 )
-        test_inds_symp = self.limit_symp_tests(test_inds_symp, randgen)
+        #test_inds_symp = self.limit_symp_tests(test_inds_symp, randgen)
         
         return test_probs, test_inds_symp
     
@@ -413,7 +413,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                 test_inds_symp = cvu.true(
                     tester_rng.random(len(test_probs)) < test_probs
                 )
-                test_inds_symp = self.limit_symp_tests(test_inds_symp, tester_rng)
+                #test_inds_symp = self.limit_symp_tests(test_inds_symp, tester_rng)
 
                 tests_perform = {"symp": test_inds_symp}
                 if self.only_symptom:
@@ -453,7 +453,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
                 ## concatenate tests
                 day_stats["nt_rand"] = len(test_inds_symp)
                 ## END NO RANDOM TESTS
-            print(f"nt_rand: {day_stats['nt_rand']}", end=" ")
+            print(f"nt_symp: {day_stats['nt_rand']}", end=" ")
             
             #print("", end=" ")
             day_stats["auc_I"] = auc_inf
@@ -567,12 +567,14 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
     def choose_tests_norank(self, sim, valid_idcs, test_inds_symp):
         raise NotImplementedError()
 
+    '''
     @abstractmethod
     def limit_symp_tests(self, test_inds, randgen):
         """
         Decide which symptomatic tests to remove
         """
         raise NotImplementedError()
+    '''
 
     @abstractmethod
     def make_random_tests(self, sim, randgen):
@@ -598,7 +600,7 @@ class RankTester(BaseRankTester):
                 only_sympt=False,
                 only_random_tests=False,
                 adoption_fraction=1.,
-                ntest_rk_only=False,
+                #ntest_rk_only=False,
                 **kwargs
                 ):
         super().__init__(ranker,label=label,
@@ -622,10 +624,11 @@ class RankTester(BaseRankTester):
         self.n_tests = num_tests
 
         self._mrng_rnd = np.random.RandomState(np.random.PCG64(42))
-        self.ntest_rk_only = ntest_rk_only
+        #self.ntest_rk_only = ntest_rk_only
 
 
 
+    """
     def limit_symp_tests(self, test_inds, randgen):
         if self.ntest_rk_only:
             ## do not limit the number of tests
@@ -636,14 +639,15 @@ class RankTester(BaseRankTester):
             randgen.shuffle(test_inds)
             test_inds = test_inds[:self.n_tests]
         return test_inds
+    """
 
     def choose_tests_ranker(self, ranking, sim, test_inds_symp):
         
-        if self.ntest_rk_only:
+        #if self.ntest_rk_only:
             ## ntests only for algo
-            n_tests_algo = self.n_tests
-        else:
-            n_tests_algo = self.n_tests - len(test_inds_symp)
+        n_tests_algo = self.n_tests
+        #else:
+        #    n_tests_algo = self.n_tests - len(test_inds_symp)
         
         if n_tests_algo > 0:
             test_inds_rk = ranking.iloc[:n_tests_algo].index.to_numpy()
@@ -653,11 +657,11 @@ class RankTester(BaseRankTester):
         return test_inds_rk
     
     def choose_tests_norank(self, sim, valid_idcs, test_inds_symp):
-        if self.ntest_rk_only:
-            ## ntests only for algo
-            n_tests_algo = self.n_tests
-        else:
-            n_tests_algo = self.n_tests - len(test_inds_symp)
+        #if self.ntest_rk_only:
+        #    ## ntests only for algo
+        n_tests_algo = self.n_tests
+        #else:
+        #    n_tests_algo = self.n_tests - len(test_inds_symp)
 
         if n_tests_algo > 0:
             ### extract at random
@@ -711,9 +715,11 @@ class ProbRankTester(BaseRankTester):
         )
         self.p_contain = p_contain
 
+    '''
     def limit_symp_tests(self, test_inds, randgen):
         ## do nothing
         return test_inds
+    '''
     
     def choose_tests_ranker(self, ranking, sim, test_inds_symp):
         if (sim.people.infectious.sum() > 0 or sim.people.exposed.sum()>0):
