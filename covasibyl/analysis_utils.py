@@ -143,7 +143,7 @@ def compute_r_eff_expo(res_dict, method='daily'):
         date_dead    = dates['date_dead'][dead_inds]
         date_outcome = np.concatenate((date_recov, date_dead))
         inds         = np.concatenate((recov_inds, dead_inds))
-        date_inf     = dates["date_infectious"][inds]
+        date_inf     = dates["date_exposed"][inds]
         if len(date_outcome):
             mean_inf     = date_outcome.mean() - date_inf.mean()
         else:
