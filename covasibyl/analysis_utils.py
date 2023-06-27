@@ -112,3 +112,58 @@ def compute_r_eff_resu(res_dict, method='daily', smoothing=2, window=7):
         raise ValueError(errormsg)
 
     return values
+
+
+def compute_r_eff_expo(res_dict, method='daily'):
+    '''
+    Effective reproduction number calculation from daily change of infected individuals
+
+    Args:
+        method (str): 'daily' uses daily infections,
+
+    Returns:
+        r_eff (array): the r_eff results array
+    '''
+
+    # Initialize arrays to hold sources and targets infected each day
+    
+    
+    dates=res_dict["people_dates"]
+    results=res_dict["sim_res"]
+    npts=len(results["n_infectious"])
+
+    filt=filter_resu_arr
+    # Default method -- calculate the daily infections
+    if method == 'daily':
+
+        # Find the dates that everyone became infectious and recovered, and hence calculate infectious duration
+        recov_inds   = idcs_notnan(dates['date_recovered'])
+        dead_inds    = idcs_notnan(dates['date_dead'])
+        date_recov   = dates['date_recovered'][recov_inds]
+        date_dead    = dates['date_dead'][dead_inds]
+        date_outcome = np.concatenate((date_recov, date_dead))
+        inds         = np.concatenate((recov_inds, dead_inds))
+        date_inf     = dates["date_infectious"][inds]
+        if len(date_outcome):
+            mean_inf     = date_outcome.mean() - date_inf.mean()
+        else:
+            warnmsg ='There were no infections during the simulation'
+            warnings.warn(warnmsg)
+            mean_inf = 0 # Doesn't matter since r_eff is 0
+
+        # Calculate R_eff as the mean infectious duration times the number of new infectious divided by the number of infectious people on a given day
+        new_infections = filt(results['new_infections']) - filt(results['n_imports'])
+        n_infectious = filt(results['n_exposed']) #filt(results['n_infectious'])
+        raw_values = mean_inf*np.divide(new_infections, n_infectious, out=np.zeros(npts), where=n_infectious>0)
+
+        # Handle smoothing, including with too-short arrays
+        len_raw = len(raw_values) # Calculate the number of raw values
+        
+        values = raw_values
+
+    # Method not recognized
+    else: # pragma: no cover
+        errormsg = f'Method must be "daily", "infectious", or "outcome", not "{method}"'
+        raise ValueError(errormsg)
+
+    return values

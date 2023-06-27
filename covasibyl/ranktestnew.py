@@ -520,7 +520,7 @@ class BaseRankTester(cvi.Intervention, metaclass=ABCMeta):
         free_birds = len(utils.check_free_birds(sim.people))
         inf_quar = (sim.people.infectious & sim.people.quarantined).sum()
         if INTERV_ACTIVE and self.verbose:
-            print("free {:d}, nQ: {:d}".format(free_birds, sim.people.quarantined.sum()))
+            print("free {:d}, nQ: {:d}, nEI: {:d}".format(free_birds, sim.people.quarantined.sum(), sim.people.exposed.sum()))
         diagnosed_today = (sim.people.date_diagnosed == sim.t) | (self.tester.date_diagnosed == sim.t)
         if callable(self.symp_test):
             day_stats["p_symp_req"] = self.symp_test(sim)    
