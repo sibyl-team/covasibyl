@@ -17,11 +17,7 @@ def make_callback(damp, maxit, tol,conv_arr):
     return print_spec
 default_print =  lambda t,err,f: print(t,err)
 
-@nb.jit()
-def _append_contacts_nb(fg, iarr,jarr,tarr,lamarr):
-    nc=len(iarr)
-    for u in range(nc):
-        fg.append_contact(iarr[u], jarr[u], tarr[u], lamarr[u])
+
 def append_many_contacts(contacts, fg,N):
     if isinstance(contacts, np.recarray):
         contacts.dtype.names = "i","j","t","m"
@@ -31,7 +27,8 @@ def append_many_contacts(contacts, fg,N):
         times = contacts["t"]
         try:
             fg.append_contacts_npy(row, col, times, lambdas)
-        except:
+        except Exception as e:
+            print(e)
             return False
         return True
     else:
@@ -52,7 +49,7 @@ class SibRanker(AbstractRanker):
                 tau = None,
                 print_callback = None,
                 debug_times=False,
-                faster_ctadd=False,
+                faster_ctadd=True,
                 ):
         
         self.description = "class for BP inference of openABM loop"
@@ -115,6 +112,7 @@ class SibRanker(AbstractRanker):
         tobs = time.time() - t0
         tinit = time.time()
         run_fast = self.faster_ctadd
+        print(f"Num contacts: {len(daily_contacts)}")
         if run_fast:
             run_fast = append_many_contacts(daily_contacts,self.f,self.N)
             print(f"Used fast contacts: {run_fast}, nc: {len(daily_contacts):3.2e}")
