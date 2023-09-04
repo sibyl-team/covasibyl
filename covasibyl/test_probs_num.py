@@ -188,7 +188,7 @@ class TestProbNum(Intervention):
 
                 ### Test
                 if not self.no_testing:
-                    self._run_tests_def(sim, test_inds_sym)
+                    self._run_tests_def(sim, {"symp":test_inds_sym})
 
                 ntrue_I = len(cvu.itruei(sim.people.symptomatic, test_inds_sym))
                 day_stats['nI_symp'] = ntrue_I
@@ -278,7 +278,7 @@ class TestProbNum(Intervention):
         
         # Run tests
         if not self.no_testing:
-            self._run_tests_def(sim, test_inds)
+            self._run_tests_def(sim, {"rank":test_inds})
     
     
         self.hist.append(day_stats)

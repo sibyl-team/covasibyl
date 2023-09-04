@@ -111,7 +111,7 @@ class TestProb(Intervention):
 
             newtest = cvu.true(rng_tests.random(len(test_probs_sym)) < test_probs_sym)
             #print(f"{t}: Randstate: {rng_tests._bit_generator.state['state']}")
-            self._run_tests_def(sim, newtest)
+            self._run_tests_def(sim, {"symp":newtest})
             return
         elif end_day is not None and t > end_day:
             return
@@ -166,7 +166,7 @@ class TestProb(Intervention):
         test_inds = cvu.true(rng_tests.random(len(test_probs)) < test_probs) # Finally, calculate who actually tests
 
         # Actually test people
-        self._run_tests_def(sim, test_inds)
+        self._run_tests_def(sim, {"rank": test_inds})
         return test_inds
 
 def test_people(people, inds, test_sensitivity=1.0, loss_prob=0.0, test_delay=0, rng=None,exp_as_I=False):
