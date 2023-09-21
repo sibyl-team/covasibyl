@@ -167,3 +167,33 @@ def compute_r_eff_expo(res_dict, method='daily'):
         raise ValueError(errormsg)
 
     return values
+
+
+def compute_reff_smooth_anna(res_dict, T, window):
+    dates=res_dict["people_dates"]
+    results=res_dict["sim_res"]
+
+    recov_inds   = idcs_notnan(dates['date_recovered'])
+    dead_inds    = idcs_notnan(dates['date_dead'])
+    date_recov   = dates['date_recovered'][recov_inds]
+    date_dead    = dates['date_dead'][dead_inds]
+    date_outcome = np.concatenate((date_recov, date_dead))
+    inds         = np.concatenate((recov_inds, dead_inds))
+    date_inf     = dates["date_exposed"][inds]
+
+    if len(date_outcome):
+        mean_inf     = date_outcome.mean() - date_inf.mean()
+    else:
+        warnmsg ='There were no infections during the simulation'
+        warnings.warn(warnmsg)
+        mean_inf = 0 # Doesn't matter since r_eff is 0
+
+    newinf = filter_resu_arr(results["new_infections"]) - filter_resu_arr(results["n_imports"])
+    infect = filter_resu_arr(results["n_exposed"])
+    Reff = np.zeros(T)
+    w = window
+    for t in range(0, T):
+        if sum(infect[max(0, t-w):t+1]) > 0:
+            Reff[t] = (sum(newinf[max(0,t-w):t+1]) / sum(infect[max(0,t-w):t+1])) * mean_inf
+
+    return Reff

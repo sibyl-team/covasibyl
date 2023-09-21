@@ -263,7 +263,7 @@ class TestProbNum(Intervention):
             
             #cvu.choose_w(probs=test_probs_rnd, n=ntests_rand, unique=True)
             if not self.no_rnd_tests:
-                test_inds = np.concatenate((test_inds, inds_test_rnd))
+                test_inds = {"symp":test_inds_sym,"rank": inds_test_rnd}
                 ntrueI_rand = len(cvu.itruei(sim.people.infectious, inds_test_rnd))
             else:
                 self._warn_once("test_norand", "No random testing performed")
@@ -278,7 +278,7 @@ class TestProbNum(Intervention):
         
         # Run tests
         if not self.no_testing:
-            self._run_tests_def(sim, {"rank":test_inds})
+            self._run_tests_def(sim, test_inds)
     
     
         self.hist.append(day_stats)
